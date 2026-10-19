@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>iCloudEMS - Overall Attendance (SYNTHETIC TEST FIXTURE)</title>
+  <!-- NOTE: SYNTHETIC TEST FIXTURE. Explicitly constructed for offline unit tests.
+       Contains NO student PII, credentials, or actual student records. -->
+</head>
+<body>
+  <div class="card-body">
+    <h5>Overall Attendance Summary</h5>
+    <form action="/corecampus/student/attendance/allSubject.php" method="post">
+      <select name="aca" id="aca">
+        <option value="2026-2027" selected>2026-2027</option>
+        <option value="2025-2026">2025-2026</option>
+      </select>
+      <select name="sem" id="sem">
+        <option value="1">1</option>
+        <option value="3">3</option>
+        <option value="5" selected>5</option>
+      </select>
+      <select name="class" id="class">
+        <option value="2582" selected>B.Tech CSE AIML-Sem 5</option>
+      </select>
+      <button type="submit" id="search_btn" class="btn btn-primary">Search</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-striped table-bordered" id="overall_table">
+        <thead>
+          <tr>
+            <th>S.No.</th>
+            <th>Course Code</th>
+            <th>Course Title</th>
+            <th>Faculty Name</th>
+            <th>Credits</th>
+            <th>Attended / Delivered</th>
+            <th>Attendance %</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>CSH301C</td>
+            <td>Computer Architecture &amp; Organisation</td>
+            <td>Faculty Alpha</td>
+            <td>3.00</td>
+            <td>17 / 19</td>
+            <td>89.47%</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>CSH302C</td>
+            <td>Operating Systems</td>
+            <td>Faculty Beta</td>
+            <td>3.00</td>
+            <td>19 / 19</td>
+            <td>100.00%</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>CSH311C</td>
+            <td>Computer Architecture Lab</td>
+            <td>Faculty Alpha</td>
+            <td>1.00</td>
+            <td>10 / 14</td>
+            <td>71.43%</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <th colspan="5">Macro Total Attendance</th>
+            <th>46 / 52</th>
+            <th>88.46%</th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</body>
+</html>

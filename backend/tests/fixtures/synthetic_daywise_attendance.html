@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>iCloudEMS - Day Wise Attendance (SYNTHETIC TEST FIXTURE)</title>
+  <!-- NOTE: SYNTHETIC TEST FIXTURE. Explicitly constructed for offline unit tests.
+       Contains NO student PII, credentials, or actual student records. -->
+</head>
+<body>
+  <div class="card-body">
+    <h5>Day Wise Attendance</h5>
+    <form action="/corecampus/student/attendance/myattendance.php" method="post">
+      <select name="acadyear" id="acadyear">
+        <option value="2026-2027" selected>2026-2027</option>
+      </select>
+      <select name="semNum[]" id="semNum">
+        <option value="5" selected>5</option>
+      </select>
+      <select name="classid[]" id="classid">
+        <option value="2582" selected>B.Tech CSE AIML-Sem 5</option>
+      </select>
+      <input type="text" name="from_date" id="from_date" value="01/10/2026">
+      <input type="text" name="to_date" id="to_date" value="31/10/2026">
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-bordered" id="daywise_table">
+        <thead>
+          <tr>
+            <th>Time Slot</th>
+            <!-- Calendar Dates as Columns in October 2026 -->
+            <th>01/10/2026 (Thu)</th>
+            <th>05/10/2026 (Mon)</th>
+            <th>06/10/2026 (Tue)</th>
+            <th>07/10/2026 (Wed)</th>
+            <th>08/10/2026 (Thu)</th>
+            <th>09/10/2026 (Fri)</th>
+            <th>Total Att/Del</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Slot 1: 09:00 - 10:00 -->
+          <tr>
+            <td>09:00 - 10:00</td>
+            <td><span class="text-success">P</span><br><small>CSH301C</small></td>
+            <td><span class="text-success">P</span><br><small>CSH310C</small></td>
+            <td><span class="text-danger">A</span><br><small>CSH305C</small></td>
+            <td><span class="text-success">P</span><br><small>CDO331</small></td>
+            <td><span class="text-success">P</span><br><small>CSH301C</small></td>
+            <td><span class="text-danger">A</span><br><small>CSH302C</small></td>
+            <td>4/6</td>
+          </tr>
+          <!-- Slot 2: 10:00 - 11:00 -->
+          <tr>
+            <td>10:00 - 11:00</td>
+            <td><span class="text-success">P</span><br><small>CSH318C</small></td>
+            <td><span class="text-success">P</span><br><small>CDO331</small></td>
+            <td></td> <!-- Blank cell: MUST NOT count as absence -->
+            <td><span class="text-success">P</span><br><small>CSH302C</small></td>
+            <td><span class="text-danger">A</span><br><small>CSH318C</small></td>
+            <td><span class="text-success">P</span><br><small>CSH304C</small></td>
+            <td>4/5</td>
+          </tr>
+          <!-- Slot 3: 11:00 - 01:00 (Lab block: 2 periods) -->
+          <tr>
+            <td>11:00 - 01:00</td>
+            <td></td>
+            <td><span class="text-success">P</span><br><small>CSH311C [LAB 2P]</small></td>
+            <td><span class="text-danger">A</span><br><small>CSH319C [LAB 2P]</small></td>
+            <td></td>
+            <td></td>
+            <td><span class="text-success">P</span><br><small>CSH303C [LAB 2P]</small></td>
+            <td>4/6</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>

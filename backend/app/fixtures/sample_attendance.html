@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>iCloudEMS - Student Attendance (Sanitized Sample Fixture)</title>
+  <!-- NOTE: This is a sanitized offline test fixture. All student PII, credentials,
+       tracking pixels, and client-side anti-debugging scripts have been scrubbed. -->
+</head>
+<body>
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h5 class="box-title mb-0">Course Wise Attendance</h5>
+    </div>
+    
+    <form action="/attendance/subwise_attendace_new.php" id="searchfrom" name="searchfrom" method="post">
+      <input type="hidden" id="admno" name="admno" value="SAMPLE_STUDENT_001">
+      <div class="row">
+        <div class="col-md-3">
+          <label class="control-label" for="acadyear">Academic Year :</label>
+          <select name="acadyear" id="acadyear">
+            <option value="">Select Year</option>
+            <option value="2026-2027" selected>2026-2027</option>
+            <option value="2025-2026">2025-2026</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="control-label" for="semNum">Semester Numeric:</label>
+          <select name="semNum[]" id="semNum" multiple>
+            <option value="">Select Semester</option>
+            <option value="5" selected>5</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="control-label" for="classid">Class:</label>
+          <select name="classid[]" id="classid" multiple>
+            <option value="2582" selected>B.Tech CSE AIML-Sem 5</option>
+          </select>
+        </div>
+        <div class="col-md-12 mt-3">
+          <button type="submit" class="btn btn-outlines" value="Search" id="getattendance" name="getattendance">Search</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="card mb-4 c1">
+    <div class="card-body">
+      <h6 class="box-title mb-3">Course Wise Attendance From <b>04/08/2026</b> to <b>27/11/2026.</b></h6>
+      <div class="table-responsive">
+        <table class="table table-bordered" width="100%">
+          <thead class="thead-light">
+            <tr class="th thead1">
+              <th width="5%" align="center">Sr.No</th>
+              <th width="30%" align="center">Course Name</th>
+              <th width="15%" align="center">Course Short Name</th>
+              <th width="15%" align="center">Course Code</th>
+              <th width="15%" align="center">Faculty Name</th>
+              <th width="10%" align="center">Course Credit</th>
+              <th width="15%" align="center">Attended/Delivered</th>
+              <th width="8%" align="center">Percent</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td align="center">1</td>
+              <td>PROFESSIONAL COMPETANCY ENHANCEMENT-III</td>
+              <td style="color:#368ABB;">PCE-III - PP</td>
+              <td align="center">CDO331</td>
+              <td align="center">VIPIN YADAV</td>
+              <td align="center">1.00</td>
+              <td align="center"><div class="rounded-s">36/40</div></td>
+              <td align="center">90</td>
+            </tr>
+            <tr>
+              <td align="center">2</td>
+              <td>ESSENCE OF INDIAN TRADITIONAL KNOWLEDGE</td>
+              <td style="color:#368ABB;">EITK - PP</td>
+              <td align="center">EDS240C</td>
+              <td align="center">Ajit Kumar</td>
+              <td align="center">1.00</td>
+              <td align="center"><div class="rounded-s">3/5</div></td>
+              <td align="center">60</td>
+            </tr>
+            <tr>
+              <td align="center">3</td>
+              <td>RESEARCH &amp; INNOVATION</td>
+              <td style="color:#368ABB;">R&amp;I - PP</td>
+              <td align="center">RDO202C</td>
+              <td align="center"></td>
+              <td align="center">1.00</td>
+              <td align="center"><div class="rounded-s">0/0</div></td>
+              <td align="center">0</td>
+            </tr>
+            <tr>
+              <td align="center">4</td>
+              <td>COMPUTER ARCHITECTURE &amp; ORGANISATION</td>
+              <td style="color:#368ABB;">CAOR - PP</td>
+              <td align="center">CSH301C</td>
+              <td align="center">Ravi Prakash Chaturvedi</td>
+              <td align="center">3.00</td>
+              <td align="center"><div class="rounded-s">17/19</div></td>
+              <td align="center">89.47</td>
+            </tr>
+            <tr>
+              <td align="center">5</td>
+              <td>COMPUTER ARCHITECTURE &amp; ORGANISATION LAB</td>
+              <td style="color:#368ABB;">CAOR - PR</td>
+              <td align="center">CSH311C</td>
+              <td align="center">Ravi Prakash Chaturvedi</td>
+              <td align="center">1.00</td>
+              <td align="center"><div class="rounded-s">10/14</div></td>
+              <td align="center">71.43</td>
+            </tr>
+            <tr>
+              <td align="center">6</td>
+              <td>OPERATING SYSTEMS</td>
+              <td style="color:#368ABB;">OS - PP</td>
+              <td align="center">CSH302C</td>
+              <td align="center">TAMANNA SACHDEVA</td>
+              <td align="center">3.00</td>
+              <td align="center"><div class="rounded-s">19/19</div></td>
+              <td align="center">100</td>
+            </tr>
+            <tr>
+              <td align="center">7</td>
+              <td>OPERATING SYSTEMS LAB</td>
+              <td style="color:#368ABB;">OS LAB - PR</td>
+              <td align="center">CSH303C</td>
+              <td align="center">TAMANNA SACHDEVA</td>
+              <td align="center">1.00</td>
+              <td align="center"><div class="rounded-s">10/10</div></td>
+              <td align="center">100</td>
+            </tr>
+            <tr>
+              <td align="center">8</td>
+              <td>ADVANCED JAVA</td>
+              <td style="color:#368ABB;">JAVA - PP</td>
+              <td align="center">CSH304C</td>
+              <td align="center">RAM CHATTERJEE</td>
+              <td align="center">3.00</td>
+              <td align="center"><div class="rounded-s">18/21</div></td>
+              <td align="center">85.71</td>
+            </tr>
+            <tr>
+              <td align="center">9</td>
+              <td>ADVANCED JAVA LAB</td>
+              <td style="color:#368ABB;">JAVA LAB - PR</td>
+              <td align="center">CSH305C</td>
+              <td align="center">RAM CHATTERJEE</td>
+              <td align="center">1.00</td>
+              <td align="center"><div class="rounded-s">14/16</div></td>
+              <td align="center">87.5</td>
+            </tr>
+            <tr>
+              <td align="center">10</td>
+              <td>Interdisciplinary Project</td>
+              <td style="color:#368ABB;">PROJECT - PR</td>
+              <td align="center">RDO301C</td>
+              <td align="center"></td>
+              <td align="center">1.00</td>
+              <td align="center"><div class="rounded-s">0/0</div></td>
+              <td align="center">0</td>
+            </tr>
+            <tr>
+              <td align="center">11</td>
+              <td>TECHNICAL INTERNSHIP-I</td>
+              <td style="color:#368ABB;">INTERNSHIP - PP</td>
+              <td align="center">RDO204C</td>
+              <td align="center"></td>
+              <td align="center">1.00</td>
+              <td align="center"><div class="rounded-s">0/0</div></td>
+              <td align="center">0</td>
+            </tr>
+            <tr>
+              <td align="center">12</td>
+              <td>Computer Vision &amp; Image Processing</td>
+              <td style="color:#368ABB;">CVIP - PP</td>
+              <td align="center">CSH318C</td>
+              <td align="center">Roshi Saxena</td>
+              <td align="center">3.00</td>
+              <td align="center"><div class="rounded-s">19/19</div></td>
+              <td align="center">100</td>
+            </tr>
+            <tr>
+              <td align="center">13</td>
+              <td>Computer Vision &amp; Image Processing LAB</td>
+              <td style="color:#368ABB;">CVIP LAB - PR</td>
+              <td align="center">CSH319C</td>
+              <td align="center">Roshi Saxena</td>
+              <td align="center">1.00</td>
+              <td align="center"><div class="rounded-s">14/16</div></td>
+              <td align="center">87.5</td>
+            </tr>
+            <tr>
+              <td align="center">14</td>
+              <td>INTRODUCTION TO NOSQL DATABASES</td>
+              <td style="color:#368ABB;">INTRODUCTION TO NOSQL DATABASES - PP</td>
+              <td align="center">CSH310C</td>
+              <td align="center">Gunjan Aggarwal</td>
+              <td align="center">3.00</td>
+              <td align="center"><div class="rounded-s">15/20</div></td>
+              <td align="center">75</td>
+            </tr>
+            <tr>
+              <td align="center">15</td>
+              <td>INTRODUCTION TO NOSQL DATABASES LAB</td>
+              <td style="color:#368ABB;">INTRODUCTION TO NOSQL DATABASES LAB (VERTICAL-3) - PR</td>
+              <td align="center">CSH312C</td>
+              <td align="center">Gunjan Aggarwal</td>
+              <td align="center">1.00</td>
+              <td align="center"><div class="rounded-s">10/14</div></td>
+              <td align="center">71.43</td>
+            </tr>
+            <tr style="font-weight: 500;">
+              <td colspan="6" align="right">Total Percentage</td>
+              <td align="center">185/213</td>
+              <td>86.85%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,75 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Package managers / Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build artifacts
+dist/
+dist-ssr/
+build/
+*.egg-info/
+.eggs/
+
+# Testing & Coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.vitest/
+coverage/
+
+# Local databases & state
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
+*.sqlite
+data/
+*.local
+
+# Browser profiles & Playwright CDP artifacts
+.playwright/
+browser-profile/
+chrome-profile/
+user_data/
+*.trace
+
+# Secrets, Credentials, Tokens & Environment variables
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+*.token
+*.session
+
+# IDE & Editor caches
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+Thumbs.db
+[Dd]esktop.ini
+.DS_Store
+
+# AttendPlan Private Reference Directory (NEVER COMMIT SENSITIVE PORTAL DUMPS)
+reference-private/
+*.raw.html
+raw_portal_dumps/
