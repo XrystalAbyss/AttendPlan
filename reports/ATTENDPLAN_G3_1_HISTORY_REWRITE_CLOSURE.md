@@ -73,7 +73,7 @@ To ensure complete non-reversibility, both the original literal identifiers and 
 ### 4.2 Synthetic Canary Test Architecture
 [`backend/tests/test_sanitization.py`](file:///c:/Users/astra/Desktop/Project/AttendPlan/backend/tests/test_sanitization.py) now operates with:
 - Zero real student data or real-data digests.
-- Canaries computed from synthetic strings (`"SYNTHETIC_CANARY_ADMISSION_ID"`, etc.).
+- Canaries computed from synthetic canary strings.
 - Active unit test (`test_synthetic_canary_detection_works`) confirming the detection engine trips on canaries.
 - Regex pattern scanning for private keys, anti-tamper scripts, and analytics trackers across all code, reports, and documentation.
 - Real-data audit scripts and exact reference lists maintained strictly offline in private scratch storage.
