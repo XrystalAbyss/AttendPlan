@@ -41,17 +41,20 @@ The remote repository state was audited using the GitHub API:
 ## 3. Security, Sanitization & Privacy Audit
 
 ### 3.1 Prohibited Data Pattern Scan
-A pre-commit regex audit was executed across the entire repository to verify that prohibited student identifiers and session artifacts never enter source control:
+A pre-commit cryptographic hash audit was executed across the entire repository to verify that prohibited student identifiers and session artifacts never enter production source code or public documentation:
 
-| Prohibited Item | Pattern Scanned | Result | Status |
+| Prohibited Category | Validation Rule | Working Tree Result | Status |
 | :--- | :--- | :--- | :--- |
-| **Student Admission No** | `[REDACTED_STUDENT_IDENTIFIER]` | 0 occurrences in source / fixtures | PASS |
-| **Aadhaar Identity** | `[REDACTED_IDENTITY_NUMBER]` | 0 occurrences in source / fixtures | PASS |
-| **Student Roll No** | `[REDACTED_STUDENT_ROLL_NO]` | 0 occurrences in source / fixtures | PASS |
-| **Student Phone No** | `[REDACTED_STUDENT_PHONE]` | 0 occurrences in source / fixtures | PASS |
-| **Student Name** | `[REDACTED_PERSONAL_NAME]` / `[REDACTED_PERSONAL_SURNAME]` | 0 occurrences in source / fixtures | PASS |
-| **Anti-Tamper Script** | `logoutDueToTampering` | 0 occurrences in source / fixtures | PASS |
-| **Analytics Trackers** | `GTM-57PQJ6N` / `UA-194952325` | 0 occurrences in source / fixtures | PASS |
+| **Student Admission No** | SHA-256 token digest matching | 0 occurrences in source / fixtures / docs | PASS |
+| **Government Identity No** | SHA-256 token digest matching | 0 occurrences in source / fixtures / docs | PASS |
+| **Student Roll No** | SHA-256 token digest matching | 0 occurrences in source / fixtures / docs | PASS |
+| **Personal Phone No** | SHA-256 token digest matching | 0 occurrences in source / fixtures / docs | PASS |
+| **Personal Student Name** | SHA-256 token digest matching | 0 occurrences in source / fixtures / docs | PASS |
+| **Anti-Tamper Script** | Regex pattern matching | 0 occurrences in source / fixtures / docs | PASS |
+| **Analytics Trackers** | Regex pattern matching | 0 occurrences in source / fixtures / docs | PASS |
+
+> [!CAUTION]
+> **Phase G.3.1 Disclosure Notice**: Prior git commits (`2c2d5e1` and `a693868`) contained literal audit pattern values in this report and test suites. While the current working tree has been completely sanitized with one-way cryptographic hash canaries, complete elimination from public remote history requires the authorized Git history remediation detailed in `reports/ATTENDPLAN_G3_1_PUBLICATION_SECURITY.md`.
 
 ### 3.2 Gitignore Containment Rules
 The following items are strictly excluded from source control:
@@ -96,13 +99,13 @@ The repository includes a dedicated CI pipeline configured in `.github/workflows
 
 ## 6. Release Candidates & Release Manifests
 
-Binary installer artifacts remain staged locally in `release-candidates/` with authoritative checksums tracked in source control:
+Binary installer artifacts remain staged locally in `release-candidates/` with authoritative checksums verified directly from installer file bytes:
 
-| Candidate | Size (bytes) | SHA-256 Checksum | Inno Setup Version |
-| :--- | :--- | :--- | :--- |
-| **`AttendPlan-0.1.0-beta.1-Setup.exe`** | 81,630,124 | `1f4682055ce8c8e8d120a1ceb27ef3eeb5f2f42a59a93ae48aa829c53ae893fb` | Inno Setup 6 |
-| **`AttendPlan-0.1.0-beta.2-Setup.exe`** | 81,636,792 | `f3ea329587a8100eeffea1fc5e6b1d4410a010d8a9df2735d4fa39a2f2679d39` | Inno Setup 6 |
-| **`AttendPlan-0.1.0-beta.3-Setup.exe`** | 81,644,316 | `12b9465d69ec4c72aca8888bde24362bc28cc9734a727d28ca2bd6415f1e63b5` | Inno Setup 6 |
+| Candidate | Size (bytes) | Actual SHA-256 Checksum | Inno Setup Version | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **`AttendPlan-0.1.0-beta.1-Setup.exe`** | 81,630,124 | `8ca484102a83739165cae2f81c07b0448f987abb6708e47893d13c1d3adbdbcc` | Inno Setup 6 | HISTORICAL_BASELINE |
+| **`AttendPlan-0.1.0-beta.2-Setup.exe`** | 81,636,792 | `fb21409f226415472e750d1b490ac2979e4f31d18227103b95fa31e777837311` | Inno Setup 6 | SUPERSEDED_BY_BETA_3 |
+| **`AttendPlan-0.1.0-beta.3-Setup.exe`** | 81,644,316 | `12b9465d69ec4c72aca8888bde24362bc28cc9734a727d28ca2bd6415f1e63b5` | Inno Setup 6 | ACTIVE_FRIENDS_BETA_CANDIDATE |
 
 ---
 
@@ -111,3 +114,4 @@ Binary installer artifacts remain staged locally in `release-candidates/` with a
 1. **Tag Initial Beta**: Tag commit `2c2d5e1ba50ed9f7789a0278dbf349712ad9bf1b` with `v0.1.0-beta.3` when ready for private GitHub Release.
 2. **Draft GitHub Release**: Upload `AttendPlan-0.1.0-beta.3-Setup.exe` as a release asset with its corresponding SHA-256 checksum once the user authorizes binary distribution.
 3. **Branch Protection**: Consider configuring branch protection on `main` to require CI checks (`Backend Quality Gate`, `Frontend Quality Gate`) before merging future pull requests.
+
