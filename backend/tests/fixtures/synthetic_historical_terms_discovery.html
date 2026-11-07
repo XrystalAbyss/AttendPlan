@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>iCloudEMS - Historical Academic Terms Discovery (SYNTHETIC FIXTURE)</title>
+  <!-- SYNTHETIC TEST FIXTURE: Zero student PII or credentials. Used for offline multi-semester discovery testing. -->
+</head>
+<body>
+  <div class="card-body">
+    <h5>Subject Wise Attendance</h5>
+    <form action="/corecampus/student/attendance/subwise_attendace_new.php" method="post">
+      <div class="row">
+        <!-- Academic Year Selector -->
+        <div class="col-md-3">
+          <label for="aca">Academic Year</label>
+          <select name="aca" id="aca" class="form-control">
+            <option value="2026-2027" selected>2026-2027</option>
+            <option value="2025-2026">2025-2026</option>
+            <option value="2024-2025">2024-2025</option>
+            <option value="2023-2024">2023-2024</option>
+            <option value="2022-2023">2022-2023</option>
+          </select>
+        </div>
+
+        <!-- Semester Selector -->
+        <div class="col-md-3">
+          <label for="sem">Semester</label>
+          <select name="semNum" id="sem" class="form-control">
+            <option value="5" selected>Semester 5</option>
+            <option value="4">Semester 4</option>
+            <option value="3">Semester 3</option>
+            <option value="2">Semester 2</option>
+            <option value="1">Semester 1</option>
+          </select>
+        </div>
+
+        <!-- Class Selector -->
+        <div class="col-md-3">
+          <label for="classid">Class</label>
+          <select name="classid" id="classid" class="form-control">
+            <option value="2582" selected>B.Tech CSE AIML-Sem 5</option>
+            <option value="2140">B.Tech CSE AIML-Sem 4</option>
+            <option value="1820">B.Tech CSE AIML-Sem 3</option>
+            <option value="1410">B.Tech CSE-Sem 2</option>
+            <option value="1050">B.Tech CSE-Sem 1</option>
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <button type="submit" id="search" class="btn btn-primary">Search</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</body>
+</html>

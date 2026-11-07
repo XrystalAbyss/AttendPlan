@@ -1,0 +1,278 @@
+# AttendPlan - Full Application Launcher
+# Starts Dedicated Chrome, FastAPI Backend, React/Vite Frontend, and opens Dashboard.
+# Completely local-first, zero cloud dependencies, single-instance safe.
+
+[CmdletBinding()]
+param(
+    [switch]$Stop = $false
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+if ($Stop) {
+    & "$PSScriptRoot\Stop-AttendPlan.ps1"
+    exit 0
+}
+
+function Log-Step([string]$num, [string]$title) {
+    Write-Host "`n[$num] $title" -ForegroundColor Yellow
+}
+
+function Log-Ok([string]$msg) {
+    Write-Host "      [OK] $msg" -ForegroundColor Green
+}
+
+function Log-Error([string]$msg) {
+    Write-Host "      [ERROR] $msg" -ForegroundColor Red
+}
+
+function Log-Info([string]$msg) {
+    Write-Host "      [INFO] $msg" -ForegroundColor Cyan
+}
+
+Write-Host "==========================================" -ForegroundColor Cyan
+Write-Host "               ATTENDPLAN                 " -ForegroundColor Cyan
+Write-Host "        Local Attendance Planner          " -ForegroundColor Cyan
+Write-Host "==========================================" -ForegroundColor Cyan
+
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$runDir = Join-Path $env:LOCALAPPDATA "AttendPlan\run"
+if (-not (Test-Path -LiteralPath $runDir)) {
+    New-Item -ItemType Directory -Path $runDir -Force | Out-Null
+}
+
+$backendPidFile = Join-Path $runDir "backend.pid"
+$frontendPidFile = Join-Path $runDir "frontend.pid"
+
+# -------------------------------------------------------------
+# [1/5] Checking environment...
+# -------------------------------------------------------------
+Log-Step "1/5" "Checking environment..."
+
+$pythonExe = Join-Path $repoRoot "backend\.venv\Scripts\python.exe"
+if (-not (Test-Path -LiteralPath $pythonExe)) {
+    Log-Error "Python virtual environment not found at backend\.venv"
+    Write-Host "             Please run environment setup first:" -ForegroundColor Yellow
+    Write-Host "               cd backend" -ForegroundColor Gray
+    Write-Host "               python -m venv .venv" -ForegroundColor Gray
+    Write-Host "               .venv\Scripts\pip install -r requirements.txt" -ForegroundColor Gray
+    exit 1
+}
+Log-Ok "Python environment ready: backend\.venv"
+
+$nodeModules = Join-Path $repoRoot "frontend\node_modules"
+if (-not (Test-Path -LiteralPath $nodeModules)) {
+    Log-Error "Frontend Node.js dependencies not found at frontend\node_modules"
+    Write-Host "             Please run setup first:" -ForegroundColor Yellow
+    Write-Host "               cd frontend" -ForegroundColor Gray
+    Write-Host "               npm install" -ForegroundColor Gray
+    exit 1
+}
+Log-Ok "Node.js dependencies ready: frontend\node_modules"
+
+$chromeCandidates = @(
+    "C:\Program Files\Google\Chrome\Application\chrome.exe",
+    "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe"
+)
+$chromeExe = $null
+foreach ($cand in $chromeCandidates) {
+    if (Test-Path -LiteralPath $cand) {
+        $chromeExe = $cand
+        break
+    }
+}
+if (-not $chromeExe) {
+    Log-Error "Google Chrome executable was not found on this system."
+    exit 1
+}
+Log-Ok "Google Chrome located"
+
+# -------------------------------------------------------------
+# [2/5] Starting dedicated Chrome...
+# -------------------------------------------------------------
+Log-Step "2/5" "Starting dedicated Chrome..."
+
+& "$PSScriptRoot\Launch-Chrome.ps1" -Quiet
+if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+    Log-Error "Failed to start or verify dedicated Chrome."
+    exit 1
+}
+Log-Ok "CDP 127.0.0.1:9222 verified"
+Log-Ok "University portal ready"
+
+# -------------------------------------------------------------
+# [3/5] Starting backend...
+# -------------------------------------------------------------
+Log-Step "3/5" "Starting backend..."
+
+$backendUrl = "http://127.0.0.1:8000"
+$healthUrl = "$backendUrl/health"
+$backendAlreadyRunning = $false
+
+try {
+    $healthResp = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 2 -ErrorAction Stop
+    if ($healthResp -and $healthResp.app -eq "AttendPlan" -and $healthResp.status -eq "healthy") {
+        $backendAlreadyRunning = $true
+        Log-Ok "$backendUrl (reused existing healthy instance)"
+    }
+} catch {
+    $backendAlreadyRunning = $false
+}
+
+if (-not $backendAlreadyRunning) {
+    # Check if port 8000 is occupied by an unrelated foreign process
+    $occupied8000 = Get-NetTCPConnection -LocalPort 8000 -LocalAddress "127.0.0.1" -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($occupied8000) {
+        Log-Error "Port 8000 is occupied by an unrelated process (PID: $($occupied8000.OwningProcess))."
+        Write-Host "             Cannot start AttendPlan backend. Please free port 8000." -ForegroundColor Yellow
+        exit 1
+    }
+
+    $backendDir = Join-Path $repoRoot "backend"
+    try {
+        $bProc = Start-Process -FilePath $pythonExe -ArgumentList "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000" -WorkingDirectory $backendDir -PassThru -WindowStyle Hidden
+        Set-Content -Path $backendPidFile -Value $bProc.Id -Force
+    } catch {
+        Log-Error "Failed to spawn backend process: $_"
+        exit 1
+    }
+
+    # Wait for backend healthcheck
+    $backendReady = $false
+    for ($i = 0; $i -lt 30; $i++) {
+        Start-Sleep -Milliseconds 500
+        try {
+            $resp = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 1 -ErrorAction Stop
+            if ($resp -and $resp.app -eq "AttendPlan" -and $resp.status -eq "healthy") {
+                $backendReady = $true
+                break
+            }
+        } catch {}
+    }
+
+    if (-not $backendReady) {
+        Log-Error "Backend failed to report healthy at $healthUrl within 15 seconds."
+        if ($bProc -and -not $bProc.HasExited) {
+            Stop-Process -Id $bProc.Id -Force -ErrorAction SilentlyContinue
+        }
+        Remove-Item $backendPidFile -Force -ErrorAction SilentlyContinue
+        exit 1
+    }
+
+    Log-Ok "$backendUrl (started PID: $($bProc.Id))"
+}
+
+# -------------------------------------------------------------
+# [4/5] Starting frontend...
+# -------------------------------------------------------------
+Log-Step "4/5" "Starting frontend..."
+
+$frontendUrl = "http://127.0.0.1:5173"
+$frontendAlreadyRunning = $false
+
+try {
+    $feResp = Invoke-WebRequest -Uri $frontendUrl -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop
+    if ($feResp.StatusCode -eq 200) {
+        $frontendAlreadyRunning = $true
+        Log-Ok "$frontendUrl (reused existing healthy instance)"
+    }
+} catch {
+    $frontendAlreadyRunning = $false
+}
+
+if (-not $frontendAlreadyRunning) {
+    # Check if port 5173 is occupied by unrelated process
+    $occupied5173 = Get-NetTCPConnection -LocalPort 5173 -LocalAddress "127.0.0.1" -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($occupied5173) {
+        Log-Error "Port 5173 is occupied by an unrelated process (PID: $($occupied5173.OwningProcess))."
+        Write-Host "             Cannot start Vite frontend. Please free port 5173." -ForegroundColor Yellow
+        exit 1
+    }
+
+    $frontendDir = Join-Path $repoRoot "frontend"
+    try {
+        $fProc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npm.cmd", "run", "dev", "--", "--strictPort", "--host", "127.0.0.1", "--port", "5173" -WorkingDirectory $frontendDir -PassThru -WindowStyle Hidden
+        Set-Content -Path $frontendPidFile -Value $fProc.Id -Force
+    } catch {
+        Log-Error "Failed to spawn frontend process: $_"
+        exit 1
+    }
+
+    # Wait for frontend readiness
+    $frontendReady = $false
+    for ($i = 0; $i -lt 30; $i++) {
+        Start-Sleep -Milliseconds 500
+        try {
+            $resp = Invoke-WebRequest -Uri $frontendUrl -TimeoutSec 1 -UseBasicParsing -ErrorAction Stop
+            if ($resp.StatusCode -eq 200) {
+                $frontendReady = $true
+                break
+            }
+        } catch {}
+    }
+
+    if (-not $frontendReady) {
+        Log-Error "Frontend failed to respond at $frontendUrl within 15 seconds."
+        if ($fProc -and -not $fProc.HasExited) {
+            Stop-Process -Id $fProc.Id -Force -ErrorAction SilentlyContinue
+        }
+        Remove-Item $frontendPidFile -Force -ErrorAction SilentlyContinue
+        exit 1
+    }
+
+    Log-Ok "$frontendUrl (started PID: $($fProc.Id))"
+}
+
+# -------------------------------------------------------------
+# [5/5] Opening dashboard...
+# -------------------------------------------------------------
+Log-Step "5/5" "Opening dashboard..."
+
+try {
+    $tabs = Invoke-RestMethod -Uri "http://127.0.0.1:9222/json/list" -TimeoutSec 2 -ErrorAction SilentlyContinue
+    $hasDashboardTab = $false
+    if ($tabs) {
+        foreach ($t in $tabs) {
+            if ($t.url -and ($t.url -match "5173")) {
+                $hasDashboardTab = $true
+                break
+            }
+        }
+    }
+
+    if (-not $hasDashboardTab) {
+        $opened = $false
+        try {
+            Invoke-RestMethod -Uri "http://127.0.0.1:9222/json/new?$frontendUrl" -Method Put -TimeoutSec 2 -ErrorAction Stop | Out-Null
+            $opened = $true
+        } catch {
+            try {
+                Invoke-RestMethod -Uri "http://127.0.0.1:9222/json/new?$frontendUrl" -Method Get -TimeoutSec 2 -ErrorAction SilentlyContinue | Out-Null
+                $opened = $true
+            } catch {}
+        }
+        if ($opened) {
+            Log-Ok "Opened AttendPlan dashboard in dedicated Chrome tab"
+        }
+    } else {
+        Log-Ok "AttendPlan dashboard is already open in Chrome"
+    }
+} catch {
+    Log-Info "Dedicated Chrome is running; browse to $frontendUrl"
+}
+
+Log-Ok "AttendPlan ready"
+
+Write-Host "`n==========================================" -ForegroundColor Green
+Write-Host "     SUCCESS -- ATTENDPLAN IS RUNNING      " -ForegroundColor Green
+Write-Host "==========================================" -ForegroundColor Green
+Write-Host "  Dashboard:   $frontendUrl" -ForegroundColor Cyan
+Write-Host "  API Health:  $healthUrl" -ForegroundColor Cyan
+Write-Host "  Portal CDP:  127.0.0.1:9222" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  To stop background services:" -ForegroundColor Yellow
+Write-Host "  Run scripts\Stop-AttendPlan.cmd (or Launch-AttendPlan.cmd -Stop)" -ForegroundColor Gray
+Write-Host "==========================================" -ForegroundColor Green
+exit 0

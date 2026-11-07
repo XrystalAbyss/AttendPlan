@@ -1,57 +1,44 @@
 import React, { useState } from "react";
-import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useMutation, useQuery } from "@tanstack/react-query";
+import { Loader2, Shield } from "lucide-react";
+
+import { WorkspaceNav, type WorkspaceTab, normalizeTab } from "./components/WorkspaceNav";
+import { HomeView } from "./components/HomeView";
+import { AttendanceView } from "./components/AttendanceView";
+import { PerformanceView } from "./components/PerformanceView";
+import { SettingsView } from "./components/SettingsView";
+import { FirstRunOnboarding } from "./components/FirstRunOnboarding";
 import { Header } from "./components/Header";
 import { ProvenanceBanner } from "./components/ProvenanceBanner";
-import { SummaryCards } from "./components/SummaryCards";
-import { AttendanceTable } from "./components/AttendanceTable";
 import { WhatIfSimulator } from "./components/WhatIfSimulator";
-import { SemesterSelector } from "./components/SemesterSelector";
-import { AbsenceAnalyticsView } from "./components/AbsenceAnalyticsView";
-import { ReconciliationView } from "./components/ReconciliationView";
-import { CrossSemesterView } from "./components/CrossSemesterView";
-import { PortalDiscoveryView } from "./components/PortalDiscoveryView";
+import { AttendanceExplorer } from "./components/AttendanceExplorer";
+import { AuthenticationSettingsModal } from "./components/AuthenticationSettingsModal";
+
 import {
-  fetchAcademicHistory,
+  API_BASE,
   fetchAcademicTerms,
   fetchHealth,
-  fetchMonthlyAnalytics,
-  fetchSubjectAnalytics,
   fetchTermAttendance,
-  fetchTermReconciliation,
-  fetchTermSnapshots,
-  fetchWeekdayAnalytics,
-  seedDemoData,
 } from "./api/attendance";
 import type { CourseRecord } from "./types/attendance";
-import {
-  Loader2,
-  RefreshCw,
-  AlertCircle,
-  Shield,
-  BookOpen,
-  BarChart2,
-  GitCompare,
-  GraduationCap,
-  Compass,
-  Database,
-} from "lucide-react";
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
       retry: 1,
+      staleTime: 60_000, // 1 minute fresh cache across tab switches
     },
   },
 });
 
-type DashboardTab = "roster" | "analytics" | "reconciliation" | "history" | "discovery";
-
 const AttendanceDashboard: React.FC = () => {
+  const [detailCourse, setDetailCourse] = useState<CourseRecord | null>(null);
   const [targetPercentage, setTargetPercentage] = useState<number>(75);
   const [selectedTermId, setSelectedTermId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<DashboardTab>("roster");
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>("home");
   const [selectedCourseForSimulation, setSelectedCourseForSimulation] = useState<CourseRecord | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
 
   // 1. Health Query
   const healthQuery = useQuery({
@@ -76,50 +63,40 @@ const AttendanceDashboard: React.FC = () => {
     enabled: !!currentTermId,
   });
 
-  // 4. Monthly & Weekday Analytics Queries
-  const monthlyQuery = useQuery({
-    queryKey: ["monthly-analytics", currentTermId],
-    queryFn: () => (currentTermId ? fetchMonthlyAnalytics(currentTermId) : []),
-    enabled: !!currentTermId && activeTab === "analytics",
+  // 4. Startup & Session Status
+  const startupStatusQuery = useQuery({
+    queryKey: ["startup-status"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/v1/startup/status`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    refetchInterval: 15000,
   });
 
-  const weekdayQuery = useQuery({
-    queryKey: ["weekday-analytics", currentTermId],
-    queryFn: () => (currentTermId ? fetchWeekdayAnalytics(currentTermId) : []),
-    enabled: !!currentTermId && activeTab === "analytics",
-  });
-
-  const subjectAnalyticsQuery = useQuery({
-    queryKey: ["subject-analytics", currentTermId, targetPercentage],
-    queryFn: () => (currentTermId ? fetchSubjectAnalytics(currentTermId, targetPercentage) : null),
-    enabled: !!currentTermId && activeTab === "analytics",
-  });
-
-  // 5. Reconciliation & Snapshots Queries
-  const reconciliationQuery = useQuery({
-    queryKey: ["reconciliation", currentTermId],
-    queryFn: () => (currentTermId ? fetchTermReconciliation(currentTermId) : null),
-    enabled: !!currentTermId && activeTab === "reconciliation",
-  });
-
-  const snapshotsQuery = useQuery({
-    queryKey: ["snapshots", currentTermId],
-    queryFn: () => (currentTermId ? fetchTermSnapshots(currentTermId) : []),
-    enabled: !!currentTermId && activeTab === "reconciliation",
-  });
-
-  // 6. Cross-Semester Academic History Query
-  const historyQuery = useQuery({
-    queryKey: ["academic-history", targetPercentage],
-    queryFn: () => fetchAcademicHistory(targetPercentage),
-    enabled: activeTab === "history",
+  // Refresh Mutation
+  const refreshMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`${API_BASE}/api/v1/startup/refresh-current`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail ?? "Failed to refresh attendance");
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+    },
   });
 
   const termAttendance = attendanceQuery.data;
   const isBackendHealthy = !!healthQuery.data && healthQuery.data.status === "healthy";
+  const normalizedTab = normalizeTab(activeTab);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+    <div className="attendplan-shell min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       {/* Provenance Banner */}
       {termAttendance && (
         <ProvenanceBanner
@@ -139,192 +116,129 @@ const AttendanceDashboard: React.FC = () => {
       <Header
         academicYear={termAttendance?.academic_year ?? "2026-2027"}
         semester={termAttendance?.semester ?? 5}
-        className={termAttendance?.class_name ?? "B.Tech CSE AIML-Sem 5"}
+        className={termAttendance?.class_name ?? "B.Tech CSE AIML"}
         targetPercentage={targetPercentage}
         onTargetChange={setTargetPercentage}
         isBackendHealthy={isBackendHealthy}
+        onOpenAuthModal={() => setIsAuthModalOpen(true)}
+      />
+
+      {/* Authentication and Vault Settings Modal */}
+      <AuthenticationSettingsModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onLoginSuccess={() => {
+          queryClient.invalidateQueries();
+        }}
       />
 
       {/* Main Workspace Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
-        {/* Semester Selector */}
-        {terms.length > 0 && (
-          <SemesterSelector
-            terms={terms}
-            selectedTermId={currentTermId}
-            onSelectTerm={(id) => setSelectedTermId(id)}
-          />
-        )}
-
-        {/* Institutional Tab Bar */}
-        <div className="flex border-b border-slate-800 text-xs font-medium space-x-1">
-          <button
-            onClick={() => setActiveTab("roster")}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 border-b-2 font-semibold cursor-pointer transition-colors ${
-              activeTab === "roster"
-                ? "border-indigo-500 text-indigo-400 bg-slate-900/40"
-                : "border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700"
-            }`}
-          >
-            <BookOpen className="w-4 h-4" />
-            Course Roster & Planner
-          </button>
-          <button
-            onClick={() => setActiveTab("analytics")}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 border-b-2 font-semibold cursor-pointer transition-colors ${
-              activeTab === "analytics"
-                ? "border-indigo-500 text-indigo-400 bg-slate-900/40"
-                : "border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700"
-            }`}
-          >
-            <BarChart2 className="w-4 h-4" />
-            Absence Analytics
-          </button>
-          <button
-            onClick={() => setActiveTab("reconciliation")}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 border-b-2 font-semibold cursor-pointer transition-colors ${
-              activeTab === "reconciliation"
-                ? "border-indigo-500 text-indigo-400 bg-slate-900/40"
-                : "border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700"
-            }`}
-          >
-            <GitCompare className="w-4 h-4" />
-            Source Reconciliation
-          </button>
-          <button
-            onClick={() => setActiveTab("history")}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 border-b-2 font-semibold cursor-pointer transition-colors ${
-              activeTab === "history"
-                ? "border-indigo-500 text-indigo-400 bg-slate-900/40"
-                : "border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700"
-            }`}
-          >
-            <GraduationCap className="w-4 h-4" />
-            Academic Career History
-          </button>
-          <button
-            onClick={() => setActiveTab("discovery")}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 border-b-2 font-semibold cursor-pointer transition-colors ${
-              activeTab === "discovery"
-                ? "border-indigo-500 text-indigo-400 bg-slate-900/40"
-                : "border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700"
-            }`}
-          >
-            <Compass className="w-4 h-4" />
-            Portal Discovery (F2-A)
-          </button>
+      <main id="main-content" className="workspace-main flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
+        {/* Workspace Intro */}
+        <div className="workspace-intro">
+          <div>
+            <p className="eyebrow">Your academic workspace</p>
+            <h2>
+              {
+                {
+                  home: "Attendance Overview",
+                  attendance: "Attendance & Planning",
+                  performance: "Marks & Results",
+                  settings: "Settings & Local Vault",
+                }[normalizedTab]
+              }
+            </h2>
+            <p>
+              {
+                {
+                  home: "Instant standing, safe bunk margins, and quick class planning.",
+                  attendance: "Subject rosters, 75% margins, simulation and attendance trends.",
+                  performance: "Continuous evaluation marks and assessment breakdowns across 5 semesters.",
+                  settings: "Private local storage, university session and credential vault.",
+                }[normalizedTab]
+              }
+            </p>
+          </div>
+          <span className="workspace-context">
+            {terms.length} saved {terms.length === 1 ? "semester" : "semesters"}
+            <span>Local records &bull; {targetPercentage}% subject target</span>
+          </span>
         </div>
 
-        {/* Tab 1: Course Roster & Planner */}
-        {activeTab === "roster" && (
+        {/* Primary Four-Destination Navigation */}
+        <WorkspaceNav activeTab={activeTab} onChange={(tab) => setActiveTab(tab)} />
+
+        {/* Handle Empty State: First-Run Onboarding */}
+        {termsQuery.isLoading ? (
+          <div className="h-96 flex flex-col items-center justify-center gap-3 text-slate-400">
+            <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
+            <p className="text-sm">Loading academic terms from local database...</p>
+          </div>
+        ) : terms.length === 0 ? (
+          <FirstRunOnboarding
+            onComplete={() => {
+              termsQuery.refetch();
+              setActiveTab("home");
+            }}
+            onOpenAuthModal={() => setIsAuthModalOpen(true)}
+          />
+        ) : (
           <>
-            {termsQuery.isLoading ? (
-              <div className="h-96 flex flex-col items-center justify-center gap-3 text-slate-400">
-                <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
-                <p className="text-sm">Loading academic terms from local database...</p>
-              </div>
-            ) : terms.length === 0 ? (
-              <div className="p-8 bg-slate-900/60 border border-slate-800 rounded-lg text-center flex flex-col items-center gap-4 max-w-xl mx-auto my-12">
-                <div className="w-12 h-12 rounded-full bg-indigo-950/80 border border-indigo-700 flex items-center justify-center text-indigo-400">
-                  <Compass className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold text-slate-100 m-0">No Academic Terms Ingested</h3>
-                  <p className="text-xs text-slate-400 mt-1 max-w-md m-0">
-                    A newly installed AttendPlan database starts completely empty. Connect to the university portal to discover your terms or load the offline sample dataset.
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center justify-center gap-3 mt-2">
-                  <button
-                    onClick={() => setActiveTab("discovery")}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs rounded border border-indigo-500 inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
-                  >
-                    <Compass className="w-4 h-4" />
-                    Open Portal Discovery Flow
-                  </button>
-                  <button
-                    onClick={async () => {
-                      await seedDemoData();
-                      termsQuery.refetch();
-                    }}
-                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded border border-slate-700 inline-flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Database className="w-3.5 h-3.5 text-indigo-400" />
-                    Load Sample Historical Data
-                  </button>
-                </div>
-              </div>
-            ) : attendanceQuery.isLoading ? (
-              <div className="h-96 flex flex-col items-center justify-center gap-3 text-slate-400">
-                <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
-                <p className="text-sm">Loading attendance roster from local database...</p>
-              </div>
-            ) : attendanceQuery.isError ? (
-              <div className="p-6 bg-rose-950/30 border border-rose-800/60 rounded-lg text-rose-300 flex flex-col items-center text-center gap-3">
-                <AlertCircle className="w-8 h-8 text-rose-400" />
-                <h2 className="text-base font-semibold m-0">Backend Connection Error</h2>
-                <p className="text-xs text-rose-200 max-w-md m-0">
-                  Could not load term attendance from{" "}
-                  <code className="text-rose-100 bg-rose-900/60 px-1 py-0.5 rounded">
-                    127.0.0.1:8000
-                  </code>
-                  . Please verify the backend service is running.
-                </p>
-                <button
-                  onClick={() => attendanceQuery.refetch()}
-                  className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded bg-rose-900/60 hover:bg-rose-800 border border-rose-700 text-rose-100 cursor-pointer"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Retry Connection
-                </button>
-              </div>
-            ) : termAttendance ? (
-              <>
-                <SummaryCards summary={termAttendance.summary} targetPercentage={targetPercentage} />
-                <AttendanceTable
-                  courses={termAttendance.courses}
-                  targetPercentage={targetPercentage}
-                  onSelectCourseForSimulation={(course) => setSelectedCourseForSimulation(course)}
-                />
-              </>
-            ) : null}
+            {/* Tab 1: HOME */}
+            {normalizedTab === "home" && (
+              <HomeView
+                termAttendance={termAttendance}
+                terms={terms}
+                currentTermId={currentTermId}
+                targetPercentage={targetPercentage}
+                onNavigate={(tab) => setActiveTab(tab)}
+                onRefresh={() => refreshMutation.mutate()}
+                isRefreshing={refreshMutation.isPending}
+                refreshError={refreshMutation.error ? (refreshMutation.error as Error).message : null}
+                lastSyncTime={startupStatusQuery.data?.last_sync_time}
+                connectionState={startupStatusQuery.data?.state}
+                onOpenCourseSimulation={(course) => setSelectedCourseForSimulation(course)}
+              />
+            )}
+
+            {/* Tab 2: ATTENDANCE */}
+            {normalizedTab === "attendance" && (
+              <AttendanceView
+                terms={terms}
+                selectedTermId={currentTermId}
+                onSelectTerm={(id) => setSelectedTermId(id)}
+                termAttendance={termAttendance}
+                isLoading={attendanceQuery.isLoading}
+                targetPercentage={targetPercentage}
+                onOpenCourseDetail={(course) => setDetailCourse(course)}
+                onOpenSimulation={(course) => setSelectedCourseForSimulation(course)}
+              />
+            )}
+
+            {/* Tab 3: PERFORMANCE */}
+            {normalizedTab === "performance" && <PerformanceView />}
+
+            {/* Tab 4: SETTINGS */}
+            {normalizedTab === "settings" && (
+              <SettingsView
+                onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                targetPercentage={targetPercentage}
+                onTargetChange={setTargetPercentage}
+              />
+            )}
           </>
         )}
 
-        {/* Tab 2: Absence Analytics */}
-        {activeTab === "analytics" && (
-          <AbsenceAnalyticsView
-            monthly={monthlyQuery.data ?? []}
-            weekday={weekdayQuery.data ?? []}
-            subjects={subjectAnalyticsQuery.data ?? null}
-            isLoading={monthlyQuery.isLoading || weekdayQuery.isLoading || subjectAnalyticsQuery.isLoading}
+        {/* Course Detail Drawer (if open) */}
+        {detailCourse && currentTermId && (
+          <AttendanceExplorer
+            targetPercentage={targetPercentage}
+            key={`${currentTermId}:${detailCourse.code}`}
+            termId={currentTermId}
+            academicYear={termAttendance?.academic_year ?? ""}
+            course={detailCourse}
+            onClose={() => setDetailCourse(null)}
           />
-        )}
-
-        {/* Tab 3: Source Reconciliation & Snapshots */}
-        {activeTab === "reconciliation" && (
-          <ReconciliationView
-            reconciliation={reconciliationQuery.data ?? null}
-            snapshots={snapshotsQuery.data ?? []}
-            isLoading={reconciliationQuery.isLoading || snapshotsQuery.isLoading}
-          />
-        )}
-
-        {/* Tab 4: Academic Career History */}
-        {activeTab === "history" && (
-          <CrossSemesterView
-            history={historyQuery.data ?? null}
-            isLoading={historyQuery.isLoading}
-            onSelectTerm={(termId) => {
-              setSelectedTermId(termId);
-              setActiveTab("roster");
-            }}
-          />
-        )}
-
-        {/* Tab 5: Portal Discovery (F2-A) */}
-        {activeTab === "discovery" && (
-          <PortalDiscoveryView onRefreshTerms={() => termsQuery.refetch()} />
         )}
       </main>
 
@@ -341,7 +255,7 @@ const AttendanceDashboard: React.FC = () => {
           <div className="flex items-center gap-2">
             <Shield className="w-4 h-4 text-emerald-400" />
             <span>
-              AttendPlan Local Architecture &bull; Zero external cookies or credentials stored &bull; F1 Multi-Semester Engine
+              AttendPlan Local Architecture &bull; Credentials stay in your local vault &bull; Saved semester records
             </span>
           </div>
           <div>

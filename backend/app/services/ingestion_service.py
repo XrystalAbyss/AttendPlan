@@ -11,6 +11,7 @@ Ensures:
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timezone
 from typing import Any, Optional
 
@@ -180,11 +181,19 @@ class IngestionService:
                 self.db.commit()
                 return existing, IngestionOutcome.DUPLICATE_SKIPPED
 
-            # 3. Cache course lookup by code in this term
+            # 3. Cache course lookup by code and normalized title in this term
             term_courses = self.db.scalars(
                 select(Course).where(Course.academic_term_id == term.id)
             ).all()
             code_to_course = {c.course_code: c for c in term_courses}
+            name_to_course: dict[str, Course] = {}
+            for c in term_courses:
+                if c.course_name:
+                    norm_n = re.sub(r"\s*\((?:PP|PR|TH|IA)\)\s*", "", c.course_name, flags=re.I).strip().upper()
+                    # Store (norm_name, type) and base norm_name
+                    name_to_course[f"{norm_n}_{c.course_type}"] = c
+                    if norm_n not in name_to_course:
+                        name_to_course[norm_n] = c
 
             # 4. Create Batch entity
             db_batch = AttendanceObservationBatch(
@@ -205,6 +214,13 @@ class IngestionService:
                 confidence = item.course_mapping_confidence
                 if item.source_course_label:
                     matched_course = code_to_course.get(item.source_course_label)
+                    if not matched_course:
+                        norm_lbl = re.sub(r"\s*\((?:PP|PR|TH|IA)\)\s*", "", item.source_course_label, flags=re.I).strip().upper()
+                        lbl_type = CourseType.LAB.value if "(PR)" in item.source_course_label else CourseType.THEORY.value
+                        matched_course = name_to_course.get(f"{norm_lbl}_{lbl_type}") or name_to_course.get(norm_lbl)
+                        if matched_course:
+                            code_to_course[item.source_course_label] = matched_course
+
                     if matched_course:
                         course_id = matched_course.id
                         confidence = 1.0
@@ -310,6 +326,20 @@ class IngestionService:
         )
         term = self.db.scalars(stmt).first()
 
+        # Resilient match for minor whitespace/hyphen differences in portal labels
+        if not term and class_identifier:
+            norm_cls = re.sub(r"[\s\-_]+", "", class_identifier.lower())
+            year_terms = self.db.scalars(
+                select(AcademicTerm).where(
+                    AcademicTerm.academic_year == academic_year,
+                    AcademicTerm.semester_number == semester_number,
+                )
+            ).all()
+            for cand in year_terms:
+                if cand.class_identifier and re.sub(r"[\s\-_]+", "", cand.class_identifier.lower()) == norm_cls:
+                    term = cand
+                    break
+
         f_date = date.fromisoformat(from_date_str) if from_date_str else None
         t_date = date.fromisoformat(to_date_str) if to_date_str else None
 
@@ -349,7 +379,12 @@ class IngestionService:
         )
         course = self.db.scalars(stmt).first()
 
-        c_type = CourseType.LAB.value if is_lab else CourseType.THEORY.value
+        if code.endswith("-TUT") or (short_name and "TUT" in short_name.upper()) or "TUTORIAL" in name.upper():
+            c_type = CourseType.TUTORIAL.value
+        elif is_lab or code.endswith("-PR"):
+            c_type = CourseType.LAB.value
+        else:
+            c_type = CourseType.THEORY.value
 
         if not course:
             course = Course(

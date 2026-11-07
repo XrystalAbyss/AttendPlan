@@ -38,6 +38,9 @@ export const AbsenceAnalyticsView: React.FC<AbsenceAnalyticsViewProps> = ({
 
   return (
     <div className="space-y-6">
+      {hasDaywiseData && <div className="p-4 border border-amber-700 rounded bg-amber-950/30 text-amber-200 text-sm" role="note">
+        Analytics currently cover only the locally imported months: {monthly.map(m=>m.month_label).join(", ")}. Other months are not treated as zero attendance. Review and approve their import before drawing semester-wide conclusions.
+      </div>}
       {/* 1. Date-wise timetable notification if no day-wise observations */}
       {!hasDaywiseData && (
         <div className="p-4 bg-amber-950/30 border border-amber-800/60 rounded-lg flex items-start gap-3 text-amber-200">
@@ -160,7 +163,7 @@ export const AbsenceAnalyticsView: React.FC<AbsenceAnalyticsViewProps> = ({
                     </span>
                   </>
                 ) : (
-                  <div className="py-4 text-xs text-slate-500">No scheduled periods</div>
+                  <div className="py-4 text-xs text-slate-500">No imported periods</div>
                 )}
               </div>
             ))}

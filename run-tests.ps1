@@ -3,7 +3,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host " Running AttendPlan Quality Gates (F2-A) " -ForegroundColor Cyan
+Write-Host " Running AttendPlan Quality Gates (F2-B) " -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
 $backendDir = Join-Path $PSScriptRoot "backend"

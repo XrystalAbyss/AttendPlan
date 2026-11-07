@@ -6,6 +6,7 @@ Flags discrepancies, unmapped observations, and coverage gaps.
 """
 
 from __future__ import annotations
+from app.services.current_observations import latest_observations
 
 from dataclasses import dataclass
 from datetime import date
@@ -65,10 +66,15 @@ class ReconciliationService:
     def __init__(self, db: Session) -> None:
         self.db = db
 
+    def reconcile_term(self, term_id: str) -> TermReconciliationReport:
+        """Alias for generate_reconciliation_report."""
+        return self.generate_reconciliation_report(term_id)
+
     def generate_reconciliation_report(self, term_id: str) -> TermReconciliationReport:
         term = self.db.get(AcademicTerm, term_id)
         if not term:
             raise ValueError(f"Academic term not found: {term_id}")
+
 
         # 1. Fetch latest Subject-Wise Snapshot
         latest_snap_stmt = (
@@ -136,7 +142,7 @@ class ReconciliationService:
         obs_stmt = select(AttendancePeriodObservation).where(
             AttendancePeriodObservation.academic_term_id == term_id
         )
-        all_obs = self.db.scalars(obs_stmt).all()
+        all_obs = latest_observations(self.db.scalars(obs_stmt).all())
 
         for obs in all_obs:
             if obs.delivered_period_count == 0:
@@ -221,15 +227,20 @@ class ReconciliationService:
         elif not has_day:
             rec_status = ReconciliationStatus.PARTIAL_COVERAGE
             explanation = "Subject-wise snapshot exists, but no day-wise timetable observations have been imported."
+        elif (
+            snap_tot_att == day_tot_att
+            and snap_tot_del == day_tot_del
+            and unmapped_count == 0
+            and all(c.status == "MATCHED" for c in breakdown)
+        ):
+            rec_status = ReconciliationStatus.MATCHED
+            explanation = "Total delivered and attended periods across subject-wise and day-wise datasets match exactly (100% verified)."
         elif not is_scope_compatible:
             rec_status = ReconciliationStatus.SCOPE_MISMATCH
             explanation = (
                 f"Scope non-comparability detected: {scope_reason} "
                 "Totals are not directly comparable; this reflects partial date window extraction rather than a data integrity discrepancy."
             )
-        elif snap_tot_att == day_tot_att and snap_tot_del == day_tot_del and unmapped_count == 0:
-            rec_status = ReconciliationStatus.MATCHED
-            explanation = "Total delivered and attended periods across subject-wise and day-wise datasets match exactly (100% verified)."
         elif unmapped_count > 0 and (snap_tot_del == day_tot_del + unmapped_count):
             rec_status = ReconciliationStatus.PARTIAL_COVERAGE
             explanation = f"Observation totals match after accounting for {unmapped_count} unmapped period(s)."

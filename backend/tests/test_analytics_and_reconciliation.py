@@ -386,3 +386,89 @@ class TestReconciliationService:
             # Crucial Gate A: Must report SCOPE_MISMATCH, NOT false DISCREPANCY!
             assert report.reconciliation_status == ReconciliationStatus.SCOPE_MISMATCH
             assert "Scope non-comparability detected" in (report.status_explanation or "")
+def test_semester4_course_alias_mapping():
+    from app.adapters.daywise_parser import NAME_TO_CODE_MAP
+    assert NAME_TO_CODE_MAP["SOFTWARE ENGINEERING"] == "CSH213C"
+    assert NAME_TO_CODE_MAP["SOFTWARE ENGINEERING LAB"] == "CSH214C"
+    assert NAME_TO_CODE_MAP["COMPUTER NETWORKS"] == "CSH215C"
+    assert NAME_TO_CODE_MAP["ADVANCED NEURAL NETWORKS"] == "CSH219C"
+    assert NAME_TO_CODE_MAP["PROFESSIONAL COMPETENCY ENHANCEMENT-II"] == "CDO232"
+
+
+def test_title_aware_daywise_ingestion_reconciliation():
+    engine = create_app_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    SessionLocal = sessionmaker(bind=engine)
+    """Verify day-wise observations with friendly names resolve to genuine course entities."""
+    from app.adapters.daywise_parser import ParsedDaywiseBatch, ParsedObservationItem
+    from app.db.enums import BatchStatus, CourseType, PeriodStatus
+    from app.db.models import AcademicTerm, Course, AttendanceSnapshot, AttendanceSnapshotRow
+    from app.services.ingestion_service import IngestionService
+    from app.services.reconciliation_service import ReconciliationService
+    from datetime import date
+
+    with SessionLocal() as db:
+        term = AcademicTerm(academic_year="2025-2026", semester_number=4, class_identifier="2508")
+        db.add(term)
+        db.flush()
+
+        course = Course(
+            academic_term_id=term.id,
+            course_code="CSH213C",
+            course_name="SOFTWARE ENGINEERING",
+            course_type=CourseType.THEORY.value,
+        )
+        snap = AttendanceSnapshot(
+            academic_term_id=term.id,
+            content_checksum="snap_csh213c",
+            record_count=1,
+            reporting_start_date=date(2026, 1, 12),
+            reporting_end_date=date(2026, 5, 1),
+        )
+        db.add_all([course, snap])
+        db.flush()
+
+        row = AttendanceSnapshotRow(
+            snapshot_id=snap.id, course_id=course.id, attended_periods=25, delivered_periods=33
+        )
+        db.add(row)
+        db.commit()
+
+        # Ingest a day-wise batch where the source label is friendly title
+        batch_data = ParsedDaywiseBatch(
+            academic_year="2025-2026",
+            semester=4,
+            class_identifier="2508",
+            coverage_start_date=date(2026, 1, 12),
+            coverage_end_date=date(2026, 5, 1),
+            source_filter_metadata={},
+            status=BatchStatus.COMPLETE,
+            content_checksum="batch_csh213c",
+            observations=[
+                ParsedObservationItem(
+                    attendance_date=date(2026, 1, 14),
+                    slot_start_time="09:50",
+                    slot_end_time="10:40",
+                    source_period_identifier="09:50 to 10:40",
+                    source_course_label="SOFTWARE ENGINEERING (PP)",
+                    status=PeriodStatus.PRESENT,
+                    delivered_period_count=1,
+                    attended_period_count=1,
+                    course_mapping_confidence=1.0,
+                )
+            ],
+        )
+
+        ingestion_svc = IngestionService(db)
+        db_batch, outcome = ingestion_svc.ingest_daywise_batch(batch_data, source="TEST_FIXTURE")
+
+        # Must bind to the existing course, not create a duplicate!
+        term_courses = db.query(Course).filter_by(academic_term_id=term.id).all()
+        assert len(term_courses) == 1
+        assert term_courses[0].course_code == "CSH213C"
+
+        rec_svc = ReconciliationService(db)
+        report = rec_svc.generate_reconciliation_report(term.id)
+        assert len(report.course_breakdown) == 1
+        assert report.course_breakdown[0].course_code == "CSH213C"
+        assert report.course_breakdown[0].day_wise_delivered == 1

@@ -39,7 +39,7 @@ export const ProvenanceBanner: React.FC<Props> = ({
         </span>
         <span className="text-slate-400">|</span>
         <span className="text-slate-400">
-          Academic Term: {from_date ?? "04/08/2026"} to {to_date ?? "27/11/2026"}
+          {from_date && to_date ? `Reporting period: ${from_date} to ${to_date}` : "Reporting dates not supplied"}
         </span>
         <span className="text-slate-500 font-mono text-[10px]">
           (Snapshot: {capturedAt.slice(0, 10)})
@@ -49,7 +49,7 @@ export const ProvenanceBanner: React.FC<Props> = ({
       <div className="flex items-center gap-4 text-slate-400">
         <div className="flex items-center gap-1.5">
           <Database className="w-3.5 h-3.5 text-slate-400" />
-          <span>Local Fixture Mode (Offline)</span>
+          <span>{isSample ? "Sample fixture" : "Saved locally"}</span>
         </div>
         <div className="flex items-center gap-1.5">
           <AlertCircle className="w-3.5 h-3.5 text-amber-400" />

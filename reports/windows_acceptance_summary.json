@@ -1,0 +1,203 @@
+{
+  "checks": [
+    {
+      "step": 1,
+      "title": "Application server responding",
+      "status": "PASSED",
+      "details": "FastAPI on 8000, Vite dev server on 5173 (live localhost server runtime)"
+    },
+    {
+      "step": 2,
+      "title": "Frontend loads",
+      "status": "PASSED",
+      "details": "HTTP status 200"
+    },
+    {
+      "step": 3,
+      "title": "Root layout mounted",
+      "status": "PASSED",
+      "details": "Title: AttendPlan \u00b7 Attendance & Performance"
+    },
+    {
+      "step": 4,
+      "title": "Cached attendance displays immediately",
+      "status": "PASSED",
+      "details": "Attendance UI elements rendered"
+    },
+    {
+      "step": 5,
+      "title": "Academic navigation available in WorkspaceNav",
+      "status": "PASSED",
+      "details": "Tabs: ['Home', 'Attendance', 'Performance', 'Settings']"
+    },
+    {
+      "step": 6,
+      "title": "Semester selector lists all 5 terms",
+      "status": "PASSED",
+      "details": "Terms: ['2026-2027 \u2014 Sem 5 (15 courses)', '2025-2026 \u2014 Sem 4 (17 courses)', '2025-2026 \u2014 Sem 3 (16 courses)', '2024-2025 \u2014 Sem 2 (16 courses)', '2024-2025 \u2014 Sem 1 (12 courses)']"
+    },
+    {
+      "step": 7,
+      "title": "Select semester 1 (2026-2027 \u2014 Sem 5 (1...)",
+      "status": "PASSED",
+      "details": "Selected: Attendance & Planning"
+    },
+    {
+      "step": 8,
+      "title": "Select semester 2 (2025-2026 \u2014 Sem 4 (1...)",
+      "status": "PASSED",
+      "details": "Selected: Attendance & Planning"
+    },
+    {
+      "step": 9,
+      "title": "Select semester 3 (2025-2026 \u2014 Sem 3 (1...)",
+      "status": "PASSED",
+      "details": "Selected: Attendance & Planning"
+    },
+    {
+      "step": 10,
+      "title": "Select semester 4 (2024-2025 \u2014 Sem 2 (1...)",
+      "status": "PASSED",
+      "details": "Selected: Attendance & Planning"
+    },
+    {
+      "step": 11,
+      "title": "Select semester 5 (2024-2025 \u2014 Sem 1 (1...)",
+      "status": "PASSED",
+      "details": "Selected: Attendance & Planning"
+    },
+    {
+      "step": 12,
+      "title": "Switched to Performance view",
+      "status": "PASSED",
+      "details": "PerformanceView active"
+    },
+    {
+      "step": 13,
+      "title": "All 5 semesters represented in progression table",
+      "status": "PASSED",
+      "details": "Progression rows: 5"
+    },
+    {
+      "step": 14,
+      "title": "No speculative SGPA/CGPA displayed",
+      "status": "PASSED",
+      "details": "Distinct GPA values: {'\u2014'}"
+    },
+    {
+      "step": 15,
+      "title": "Semester performance breakdown cards present",
+      "status": "PASSED",
+      "details": "Found 5 term articles"
+    },
+    {
+      "step": 16,
+      "title": "Course table and assessment columns rendered",
+      "status": "PASSED",
+      "details": "Course headers verified"
+    },
+    {
+      "step": 17,
+      "title": "Assessment breakdown drawers available",
+      "status": "PASSED",
+      "details": "Found 55 course drawers"
+    },
+    {
+      "step": 18,
+      "title": "Assessment labels and ratios displayed",
+      "status": "PASSED",
+      "details": "Sample: Assessment breakdown (6)\nCE\n19/20\nREPORTED\nMid term examinations MRU\n27/30\nREPORTED\nCE 2\n\u2014/\u2014\nUNREPORTED\nCE 3\n\u2014/\u2014\nUNREPOR..."
+    },
+    {
+      "step": 19,
+      "title": "Semester 4 masked score labeled MASKED_BY_PORTAL",
+      "status": "PASSED",
+      "details": "Masked status verified in DOM"
+    },
+    {
+      "step": 20,
+      "title": "Semester 5 partial publication and 4 source courses verified",
+      "status": "PASSED",
+      "details": "Found 4 source courses in Sem 5 table; exclusion insight displayed"
+    },
+    {
+      "step": 21,
+      "title": "Source provenance and capture timestamps displayed",
+      "status": "PASSED",
+      "details": "Found 5 provenance tags"
+    },
+    {
+      "step": 22,
+      "title": "Live performance capture securely disabled",
+      "status": "PASSED",
+      "details": "Live import disabled by policy"
+    },
+    {
+      "step": 23,
+      "title": "Zero external portal requests attempted during session",
+      "status": "PASSED",
+      "details": "Intercepted 45 requests (45 localhost allowed, 0 external attempted, 0 blocked, 0 ERP calls)"
+    },
+    {
+      "step": 24,
+      "title": "No browser console errors",
+      "status": "PASSED",
+      "details": "Console errors: []"
+    }
+  ],
+  "passed": 24,
+  "failed": 0,
+  "console_errors": [],
+  "total_intercepted_requests": 45,
+  "localhost_requests": [
+    "http://127.0.0.1:5173/",
+    "http://127.0.0.1:5173/@vite/client",
+    "http://127.0.0.1:5173/src/main.tsx?t=1794052280879",
+    "http://127.0.0.1:5173/@react-refresh",
+    "http://127.0.0.1:5173/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=06a50d9f",
+    "http://127.0.0.1:5173/node_modules/.vite/deps/react.js?v=06a50d9f",
+    "http://127.0.0.1:5173/node_modules/.vite/deps/react-dom_client.js?v=06a50d9f",
+    "http://127.0.0.1:5173/src/index.css?t=1794052280879",
+    "http://127.0.0.1:5173/src/sepia.css",
+    "http://127.0.0.1:5173/src/workspace.css?t=1794052004875",
+    "http://127.0.0.1:5173/src/theme.ts",
+    "http://127.0.0.1:5173/src/App.tsx?t=1794052280879",
+    "http://127.0.0.1:5173/node_modules/vite/dist/client/env.mjs",
+    "http://127.0.0.1:5173/node_modules/.vite/deps/chunk-OLNNFOXN.js?v=06a50d9f",
+    "http://127.0.0.1:5173/node_modules/.vite/deps/@tanstack_react-query.js?v=06a50d9f",
+    "http://127.0.0.1:5173/node_modules/.vite/deps/lucide-react.js?v=06a50d9f",
+    "http://127.0.0.1:5173/src/components/WorkspaceNav.tsx?t=1794046984792",
+    "http://127.0.0.1:5173/src/components/HomeView.tsx?t=1794052041712",
+    "http://127.0.0.1:5173/src/components/AttendanceView.tsx?t=1794051975029",
+    "http://127.0.0.1:5173/src/components/PerformanceView.tsx?t=1794052280879",
+    "http://127.0.0.1:5173/src/components/SettingsView.tsx?t=1794051994665",
+    "http://127.0.0.1:5173/src/components/FirstRunOnboarding.tsx?t=1794051951464",
+    "http://127.0.0.1:5173/src/components/Header.tsx?t=1794051937496",
+    "http://127.0.0.1:5173/src/components/ProvenanceBanner.tsx",
+    "http://127.0.0.1:5173/src/components/WhatIfSimulator.tsx?t=1794051909619",
+    "http://127.0.0.1:5173/src/components/AttendanceExplorer.tsx",
+    "http://127.0.0.1:5173/src/components/AuthenticationSettingsModal.tsx",
+    "http://127.0.0.1:5173/src/api/attendance.ts",
+    "http://127.0.0.1:5173/node_modules/.vite/deps/chunk-HGCR73MJ.js?v=06a50d9f",
+    "http://127.0.0.1:5173/node_modules/.vite/deps/chunk-ZDAEV3W6.js?v=06a50d9f",
+    "http://127.0.0.1:5173/src/components/AttendanceTable.tsx?t=1794051975029",
+    "http://127.0.0.1:5173/src/components/SummaryCards.tsx",
+    "http://127.0.0.1:5173/src/components/SemesterSelector.tsx",
+    "http://127.0.0.1:5173/src/components/AbsenceAnalyticsView.tsx",
+    "http://127.0.0.1:5173/src/standing.ts",
+    "http://127.0.0.1:5173/src/components/ThemeSwitch.tsx",
+    "http://127.0.0.1:8000/health",
+    "http://127.0.0.1:8000/api/v1/terms?target=75",
+    "http://127.0.0.1:8000/api/v1/startup/status",
+    "http://127.0.0.1:8000/api/v1/terms/ed06cbda-281f-4c60-b7ed-849817ba47db/attendance?target=75",
+    "http://127.0.0.1:8000/api/v1/terms/53d60f23-e8ac-4077-a0ce-27e62aa311b9/attendance?target=75",
+    "http://127.0.0.1:8000/api/v1/terms/056b0ab4-e221-43f5-8f57-c2231ded193b/attendance?target=75",
+    "http://127.0.0.1:8000/api/v1/terms/43c15e7f-18b3-4436-8945-f3f4c2a046bd/attendance?target=75",
+    "http://127.0.0.1:8000/api/v1/terms/9ec8c9a0-38c3-47a5-922c-035078d9ef4e/attendance?target=75",
+    "http://127.0.0.1:8000/api/v1/performance/overview"
+  ],
+  "external_requests_attempted": [],
+  "external_requests_blocked": [],
+  "external_requests_allowed": [],
+  "actual_portal_requests_issued": 0
+}

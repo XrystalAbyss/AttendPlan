@@ -288,3 +288,274 @@ export interface OverallDiscoveryResponse {
   macro_attendance_percentage: number | null;
   evidence: Record<string, unknown>;
 }
+
+export type SyncJobState =
+  | "IDLE"
+  | "LOGIN_REQUIRED"
+  | "AUTHENTICATED"
+  | "DISCOVERING"
+  | "PREVIEW_READY"
+  | "SYNCING_SUBJECTS"
+  | "SYNCING_DAYWISE"
+  | "VALIDATING"
+  | "PERSISTING"
+  | "RECONCILING"
+  | "COMPLETED"
+  | "PARTIALLY_COMPLETED"
+  | "SESSION_EXPIRED"
+  | "CANCELLED"
+  | "FAILED";
+
+export interface SyncJobResponse {
+  id: string;
+  academic_term_id: string | null;
+  source_scope: string;
+  state: SyncJobState;
+  current_step: string;
+  start_timestamp: string;
+  completion_timestamp: string | null;
+  completed_batches: number;
+  failed_batches: number;
+  progress_total: number;
+  progress_current: number;
+  safe_diagnostic_message: string | null;
+  details: Record<string, any> | null;
+}
+
+export interface SyncSubjectWiseResponse {
+  status: string;
+  snapshot_id: string | null;
+  term_id: string | null;
+  outcome: string;
+  record_count: number;
+  academic_year: string;
+  semester: number;
+  class_name: string | null;
+  aggregate_percentage: number | null;
+  validation: {
+    is_valid: boolean;
+    percentage_deviations: Array<{ course: string; computed: number; displayed: number; diff: number }>;
+    warnings: string[];
+    quarantined: boolean;
+    quarantine_reason: string | null;
+  };
+}
+
+export interface SyncDayWiseResponse {
+  status: string;
+  batch_id: string | null;
+  term_id: string | null;
+  outcome: string;
+  coverage_start: string;
+  coverage_end: string;
+  total_observations: number;
+  total_present: number;
+  total_delivered: number;
+  unmapped_count: number;
+  validation: {
+    is_valid: boolean;
+    course_attribution_active: boolean;
+    warnings: string[];
+    locally_computed: Record<string, any>;
+  };
+}
+
+export interface TermSyncScopeItem {
+  academic_year: string;
+  semester: number;
+  class_identifier: string | null;
+  candidate_months: string[];
+  candidate_month_labels: string[];
+  estimated_requests: number;
+  has_subject_snapshot: boolean;
+  has_daywise_batches: boolean;
+  existing_batches_count: number;
+  selected: boolean;
+}
+
+export interface HistoricalPlanResponse {
+  discovered_academic_years: string[];
+  terms: TermSyncScopeItem[];
+  total_terms_count: number;
+  total_estimated_requests: number;
+  pacing_guidance: string;
+}
+
+// -------------------------------------------------------------
+// F2-C: TOTP Vault & Persistent Mobile Identity Types
+// -------------------------------------------------------------
+
+export interface AuthSettings {
+  has_saved_mobile: boolean;
+  masked_mobile: string | null;
+  auto_mobile_autofill: boolean;
+  auto_login_continuation: boolean;
+  auto_totp_autofill: boolean;
+  auto_totp_submit: boolean;
+}
+
+export interface AuthSettingsUpdate {
+  mobile_number?: string;
+  clear_mobile?: boolean;
+  auto_mobile_autofill?: boolean;
+  auto_login_continuation?: boolean;
+  auto_totp_autofill?: boolean;
+  auto_totp_submit?: boolean;
+}
+
+export interface TotpEnrollmentMetadata {
+  enrollment_id: string;
+  issuer: string;
+  masked_account: string;
+  enrolled_at: string;
+  digits: number;
+  period: number;
+  algorithm: string;
+  auto_autofill_enabled: boolean;
+  auto_submit_enabled: boolean;
+}
+
+export interface TotpStatusResponse {
+  is_enrolled: boolean;
+  vault_backend: string;
+  is_secure_backend: boolean;
+  metadata: TotpEnrollmentMetadata | null;
+  clock_skew_seconds: number;
+  auto_autofill_enabled: boolean;
+  auto_submit_enabled: boolean;
+  details: string;
+}
+
+export interface TotpCandidate {
+  candidate_id: string;
+  issuer: string;
+  masked_account: string;
+  digits: number;
+  period: number;
+  algorithm: string;
+  source_type: string;
+}
+
+export interface TotpInspectResponse {
+  candidates: TotpCandidate[];
+  total_found: number;
+  source_format: string;
+}
+
+export type LoginState =
+  | "DISCONNECTED"
+  | "SESSION_CHECKING"
+  | "LOGIN_REQUIRED"
+  | "ENTERING_MOBILE"
+  | "WAITING_FOR_TOTP"
+  | "SUBMITTING_TOTP"
+  | "VERIFYING_SESSION"
+  | "AUTHENTICATED"
+  | "SESSION_EXPIRED"
+  | "MANUAL_ACTION_REQUIRED"
+  | "FAILED";
+
+export interface LoginOrchestrationResponse {
+  state: LoginState;
+  step: string;
+  success: boolean;
+  redirected: boolean;
+  message: string;
+  current_url: string | null;
+  has_saved_mobile: boolean;
+  is_totp_enrolled: boolean;
+  details: Record<string, any>;
+}
+
+// -------------------------------------------------------------
+// F2-E: Multi-Semester Historical Types
+// -------------------------------------------------------------
+
+export interface HistoricalTermInventoryItem {
+  term_key: string;
+  academic_year: string;
+  semester_number: number;
+  class_identifier: string | null;
+  display_label: string;
+  class_display_label: string | null;
+  status: string;
+  has_subject_summary: boolean;
+  has_daywise_data: boolean;
+  existing_courses_count: number;
+  existing_observations_count: number;
+  attended_sum: number;
+  delivered_sum: number;
+  percentage: number | null;
+  discovered_at: string | null;
+  last_sync_timestamp: string | null;
+  candidate_months: string[];
+  candidate_month_labels: string[];
+  estimated_requests: number;
+  coverage_state: string;
+  reconciliation_verdict: string;
+  error_message: string | null;
+}
+
+export interface HistoricalDiscoveryResponse {
+  terms: HistoricalTermInventoryItem[];
+  discovered_years: string[];
+  total_terms_count: number;
+  available_terms_count: number;
+  imported_terms_count: number;
+  discovery_timestamp: string;
+  provenance: string;
+}
+
+export interface HistoricalPreviewResponse {
+  source_course_count?: number | null;
+  approval_id?: string | null;
+  selected_terms: HistoricalTermInventoryItem[];
+  total_selected_terms: number;
+  total_estimated_requests: number;
+  estimated_pacing_seconds: number;
+  pacing_guidance: string;
+  requires_user_approval: boolean;
+}
+
+export interface TermCoverageResponse {
+  term_id: string;
+  academic_year: string;
+  semester_number: number;
+  class_identifier: string | null;
+  coverage_state: string;
+  has_subject_summary: boolean;
+  subject_snapshot_count: number;
+  subject_courses_count: number;
+  candidate_months: string[];
+  candidate_month_labels: string[];
+  months_attempted: string[];
+  months_completed: string[];
+  unique_instructional_dates: number;
+  unique_instructional_periods: number;
+  mapped_periods: number;
+  unmapped_periods: number;
+  missing_or_unreported_periods: number;
+  source_errors_count: number;
+  reconciliation_verdict: string;
+  details: Record<string, any>;
+}
+
+
+
+
+export interface TermCalendarConfig {
+  term_key: string;
+  academic_year: string;
+  semester_number: number;
+  class_identifier: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  candidate_months: string[];
+  confirmed_months: string[];
+  excluded_months: string[];
+  approved_exceptional_months: string[];
+  source: string;
+  source_verification_timestamp: string | null;
+  confidence_status: string;
+  notes: string | null;
+}

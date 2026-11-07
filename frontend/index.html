@@ -2,12 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>try{var p=localStorage.getItem('attendplan-theme')||'system';if(p!=='sepia-dark'&&p!=='sepia-light')p='system';var d=p==='sepia-dark'||(p==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.dataset.theme=d?'sepia-dark':'sepia-light';document.documentElement.style.colorScheme=d?'dark':'light';document.documentElement.style.backgroundColor=d?'#191713':'#f4efe5';}catch(e){var d=typeof matchMedia==='function'&&matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.dataset.theme=d?'sepia-dark':'sepia-light';document.documentElement.style.colorScheme=d?'dark':'light';document.documentElement.style.backgroundColor=d?'#191713':'#f4efe5';}</script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <title>AttendPlan · Attendance & Performance</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
+

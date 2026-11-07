@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>iCloudEMS - Subject Wise Attendance - Semester 1 (SYNTHETIC FIXTURE)</title>
+  <!-- SYNTHETIC TEST FIXTURE: Zero student PII. Semester 1 (2024-2025). -->
+</head>
+<body>
+  <div class="card-body">
+    <form action="/corecampus/student/attendance/subwise_attendace_new.php" method="post">
+      <select name="acadyear" id="acadyear"><option value="2024-2025" selected>2024-2025</option></select>
+      <select name="semNum" id="semNum"><option value="1" selected>1</option></select>
+      <select name="classid" id="classid"><option value="1050" selected>B.Tech CSE AIML-Sem 1</option></select>
+      <input type="text" name="from_date" value="01/08/2024">
+      <input type="text" name="to_date" value="31/12/2024">
+    </form>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h6 class="box-title mb-3">Course Wise Attendance From <b>01/08/2024</b> to <b>31/12/2024.</b></h6>
+      <table class="table table-bordered">
+        <thead>
+          <tr>
+            <th>Sr.No</th>
+            <th>Course Name</th>
+            <th>Course Short Name</th>
+            <th>Course Code</th>
+            <th>Faculty Name</th>
+            <th>Course Credit</th>
+            <th>Attended/Delivered</th>
+            <th>Percent</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>INTRODUCTION TO COMPUTER SYSTEMS</td>
+            <td>ICS</td>
+            <td>CSH100C</td>
+            <td>Prof. S. Bose</td>
+            <td>3.0</td>
+            <td>32/36</td>
+            <td>88.89</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>PROFESSIONAL COMMUNICATION</td>
+            <td>ENG</td>
+            <td>ENG101</td>
+            <td>Dr. E. Thomas</td>
+            <td>2.0</td>
+            <td>26/28</td>
+            <td>92.86</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>ENGINEERING CHEMISTRY</td>
+            <td>CHM</td>
+            <td>CHM101</td>
+            <td>Dr. D. Ghosh</td>
+            <td>3.0</td>
+            <td>24/30</td>
+            <td>80.00</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>

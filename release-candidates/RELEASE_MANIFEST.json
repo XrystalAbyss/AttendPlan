@@ -1,0 +1,50 @@
+{
+  "product": "AttendPlan",
+  "version": "0.1.0-beta.3",
+  "target_platform": "win32-x64",
+  "architecture": "x64",
+  "build_timestamp": "2026-11-07T17:03:24Z",
+  "artifacts": [
+    {
+      "filename": "AttendPlan-0.1.0-beta.1-Setup.exe",
+      "version": "0.1.0-beta.1",
+      "type": "Inno Setup Installer (User Mode)",
+      "size_bytes": 81630124,
+      "sha256": "8ca484102a83739165cae2f81c07b0448f987abb6708e47893d13c1d3adbdbcc",
+      "privileges_required": "lowest",
+      "default_install_dir": "%LOCALAPPDATA%\\AttendPlan\\app",
+      "status": "HISTORICAL_BASELINE"
+    },
+    {
+      "filename": "AttendPlan-0.1.0-beta.2-Setup.exe",
+      "version": "0.1.0-beta.2",
+      "type": "Inno Setup Installer (User Mode - Hardened)",
+      "size_bytes": 81636792,
+      "sha256": "fb21409f226415472e750d1b490ac2979e4f31d18227103b95fa31e777837311",
+      "privileges_required": "lowest",
+      "default_install_dir": "%LOCALAPPDATA%\\AttendPlan\\app",
+      "status": "SUPERSEDED_BY_BETA_3"
+    },
+    {
+      "filename": "AttendPlan-0.1.0-beta.3-Setup.exe",
+      "version": "0.1.0-beta.3",
+      "type": "Inno Setup Installer (User Mode - Final Supervised Beta)",
+      "size_bytes": 81644316,
+      "sha256": "12b9465d69ec4c72aca8888bde24362bc28cc9734a727d28ca2bd6415f1e63b5",
+      "privileges_required": "lowest",
+      "default_install_dir": "%LOCALAPPDATA%\\AttendPlan\\app",
+      "status": "ACTIVE_FRIENDS_BETA_CANDIDATE",
+      "improvements": [
+        "Origin & Referer cross-site loopback attack prevention middleware",
+        "Two-socket port binding collision verification (ports 8000-8010)",
+        "Predictable clean error message on port range exhaustion",
+        "Expanded CORS origins for all fallback ports (8000-8010)",
+        "Strict Alembic schema satisfaction check in init_db() before stamping head",
+        "CDP port discovery and verification against non-CDP listeners (9222-9230)",
+        "Frontend dynamic serving port resolution",
+        "Offline database backup export endpoint & UI button",
+        "Dedicated browser session disconnect endpoint & UI button"
+      ]
+    }
+  ]
+}

@@ -11,8 +11,9 @@ backend_dir = Path(__file__).resolve().parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
-from app.db.models import Base
-from app.db.session import build_sqlite_url, get_default_db_path
+from app.db.models import Base  # noqa: E402
+from app.db.session import build_sqlite_url, get_default_db_path  # noqa: E402
+
 
 config = context.config
 
@@ -24,12 +25,14 @@ target_metadata = Base.metadata
 
 def get_url() -> str:
     """Return database URL from environment or default path."""
-    env_override = os.environ.get("ATTENDPLAN_DB_PATH")
-    if env_override:
-        return build_sqlite_url(env_override)
+    # An explicit migration target must win over the runtime default.
+    # Otherwise migration tests can operate on the user's configured database.
     config_url = config.get_main_option("sqlalchemy.url")
     if config_url and "driver://user" not in config_url:
         return config_url
+    env_override = os.environ.get("ATTENDPLAN_DB_PATH")
+    if env_override:
+        return build_sqlite_url(env_override)
     return build_sqlite_url(get_default_db_path())
 
 

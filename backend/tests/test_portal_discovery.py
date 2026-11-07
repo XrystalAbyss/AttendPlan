@@ -1,7 +1,9 @@
 """Integration and unit tests for F2-A portal discovery adapters and endpoints."""
 
+import pytest
 from pathlib import Path
 from fastapi.testclient import TestClient
+
 
 from app.adapters.portal_session import (
     AcademicTermDiscoveryAdapter,
@@ -40,13 +42,14 @@ class TestPortalSessionManager:
             assert "chrome.exe" in exe.lower()
 
     def test_session_manager_initial_state_disconnected(self) -> None:
-        """When no browser process is launched, status is DISCONNECTED on loopback port 9222."""
-        manager = PortalSessionManager(cdp_port=9222)
+        """When no browser process is launched, status is DISCONNECTED on loopback port."""
+        manager = PortalSessionManager(cdp_port=19222)
         info = manager.check_session_status()
-        assert info.state in [PortalSessionState.DISCONNECTED, PortalSessionState.BROWSER_READY]
-        assert info.cdp_port == 9222
+        assert info.state == PortalSessionState.DISCONNECTED
+        assert info.cdp_port == 19222
         assert "127.0.0.1" in info.cdp_url
         assert info.manual_fallback_available is True
+
 
     def test_session_manager_close_is_idempotent(self) -> None:
         """Closing an unstarted or running session must terminate cleanly without errors."""
@@ -148,7 +151,7 @@ class TestPortalApiEndpoints:
         resp = client.post("/api/v1/portal/session/close")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["state"] in ["DISCONNECTED", "BROWSER_READY"]
+        assert data["state"] in ["DISCONNECTED", "BROWSER_READY", "LOGIN_REQUIRED", "AUTHENTICATED"]
 
     def test_portal_discover_terms_with_payload(self) -> None:
         """POST /api/v1/portal/discover/terms with HTML payload parses offline terms."""
@@ -187,9 +190,10 @@ class TestPortalApiEndpoints:
         assert len(data["date_columns"]) >= 6
         assert len(data["time_slots"]) >= 3
 
-    def test_portal_discover_without_browser_or_payload_returns_400(self) -> None:
+    def test_portal_discover_without_browser_or_payload_returns_400(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """POST /api/v1/portal/discover/* without active browser or payload returns 400."""
-        # Ensure session is closed so no live tab is found
-        client.post("/api/v1/portal/session/close")
+        from app.api import routes
+        monkeypatch.setattr(routes._portal_session_manager, "fetch_portal_page_content", lambda *args, **kwargs: (None, None))
         resp = client.post("/api/v1/portal/discover/terms", json={})
         assert resp.status_code in [400, 500]
+

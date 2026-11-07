@@ -1,0 +1,178 @@
+{
+  "timestamp": "2026-11-07T10:56:51Z",
+  "environment": {
+    "os": "Windows 11 (10.0.26200)",
+    "processor": "Intel64 Family 6 Model 186 Stepping 2, GenuineIntel",
+    "cpu_count": 12,
+    "ram_gb": 15.7,
+    "python_version": "3.12.10"
+  },
+  "api_latencies": {
+    "GET /api/v1/terms": {
+      "samples": 10,
+      "median_ms": 12.63,
+      "p95_ms": 32.46,
+      "min_ms": 10.04,
+      "max_ms": 32.46
+    },
+    "GET /api/v1/terms/{id}/attendance": {
+      "samples": 10,
+      "median_ms": 11.51,
+      "p95_ms": 28.33,
+      "min_ms": 10.51,
+      "max_ms": 28.33
+    },
+    "GET /api/v1/terms/{id}/analytics/monthly": {
+      "samples": 10,
+      "median_ms": 53.64,
+      "p95_ms": 104.42,
+      "min_ms": 27.77,
+      "max_ms": 104.42
+    },
+    "GET /api/v1/performance/overview": {
+      "samples": 10,
+      "median_ms": 280.81,
+      "p95_ms": 420.72,
+      "min_ms": 176.28,
+      "max_ms": 420.72
+    },
+    "GET /api/v1/auth/settings": {
+      "samples": 10,
+      "median_ms": 3.1,
+      "p95_ms": 27.03,
+      "min_ms": 1.67,
+      "max_ms": 27.03
+    },
+    "GET /api/v1/startup/status": {
+      "samples": 10,
+      "median_ms": 4.06,
+      "p95_ms": 5.06,
+      "min_ms": 3.71,
+      "max_ms": 5.06
+    }
+  },
+  "sqlite_latencies": {
+    "SELECT all terms": {
+      "samples": 10,
+      "median_ms": 0.016,
+      "p95_ms": 0.045,
+      "min_ms": 0.015,
+      "max_ms": 0.045
+    },
+    "SELECT term courses": {
+      "samples": 10,
+      "median_ms": 0.042,
+      "p95_ms": 0.102,
+      "min_ms": 0.041,
+      "max_ms": 0.102
+    },
+    "SELECT term observations": {
+      "samples": 10,
+      "median_ms": 3.66,
+      "p95_ms": 5.211,
+      "min_ms": 2.639,
+      "max_ms": 5.211
+    },
+    "SELECT all performance snapshots": {
+      "samples": 10,
+      "median_ms": 0.046,
+      "p95_ms": 0.478,
+      "min_ms": 0.042,
+      "max_ms": 0.478
+    },
+    "SELECT count observations per course": {
+      "samples": 10,
+      "median_ms": 0.336,
+      "p95_ms": 0.656,
+      "min_ms": 0.209,
+      "max_ms": 0.656
+    }
+  },
+  "ux_timings": {
+    "cold_dashboard_load_ms": 1047.22,
+    "nav_to_attendance_ms": 192.23,
+    "semester_switch_ms": 130.4,
+    "calendar_toggle_ms": 119.64,
+    "nav_to_performance_ms": 93.06,
+    "nav_to_home_ms": 84.86
+  },
+  "bundle_sizes": {
+    "favicon.svg": {
+      "size_bytes": 9522,
+      "size_kb": 9.3
+    },
+    "icons.svg": {
+      "size_bytes": 5031,
+      "size_kb": 4.91
+    },
+    "index.html": {
+      "size_bytes": 1222,
+      "size_kb": 1.19
+    },
+    "index-B-__c2vO.css": {
+      "size_bytes": 76984,
+      "size_kb": 75.18
+    },
+    "index-DsH8SqIo.js": {
+      "size_bytes": 406141,
+      "size_kb": 396.62
+    }
+  },
+  "memory_usage": {
+    "node.exe_18464": 0.01,
+    "node.exe_21572": 85.31,
+    "node.exe_16600": 0.01,
+    "node_repl.exe_14492": 0.01,
+    "node_repl.exe_29576": 0.01,
+    "node.exe_10180": 0.01,
+    "node.exe_32140": 0.01,
+    "node_repl.exe_7080": 0.49,
+    "node.exe_34656": 0.01,
+    "node.exe_23160": 0.01,
+    "node.exe_25068": 0.01,
+    "python.exe_15872": 0.01,
+    "python.exe_10944": 0.01,
+    "node.exe_33856": 0.01,
+    "node.exe_21516": 0.01,
+    "node.exe_18696": 0.01,
+    "node.exe_15392": 0.01,
+    "node.exe_34504": 0.01,
+    "node.exe_26136": 0.01,
+    "node.exe_34644": 0.01,
+    "node.exe_19020": 0.01,
+    "node.exe_26324": 0.01,
+    "python.exe_29572": 0.01,
+    "python.exe_20440": 0.01,
+    "python.exe_28604": 0.01,
+    "python.exe_22996": 2.25,
+    "chrome.exe_21816": 30.24,
+    "chrome.exe_35720": 0.41,
+    "chrome.exe_7044": 11.52,
+    "chrome.exe_11944": 5.52,
+    "chrome.exe_14736": 1.74,
+    "chrome.exe_34632": 2.64,
+    "python.exe_13420": 0.01,
+    "python.exe_21092": 109.12,
+    "chrome.exe_1984": 4.96,
+    "chrome.exe_25048": 5.8,
+    "chrome.exe_13648": 1.96,
+    "node.exe_15976": 0.01,
+    "node.exe_30660": 0.01,
+    "python.exe_11876": 0.01,
+    "python.exe_27636": 0.01,
+    "node.exe_16244": 0.01,
+    "node.exe_28524": 0.01,
+    "node.exe_9972": 0.01,
+    "node.exe_12404": 0.01,
+    "node.exe_8472": 0.01,
+    "node.exe_27596": 0.01,
+    "node.exe_34840": 0.01,
+    "python.exe_30060": 0.02,
+    "python.exe_22184": 0.02,
+    "node.exe_24588": 0.01,
+    "node.exe_23952": 0.01,
+    "node.exe_34772": 0.02,
+    "python.exe_15596": 4.07,
+    "python.exe_14024": 61.18
+  }
+}

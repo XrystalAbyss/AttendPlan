@@ -277,6 +277,7 @@ class ERPAttendanceParser:
 
         courses: list[CourseRecord] = []
         att_del_re = re.compile(r"(\d+)\s*/\s*(\d+)")
+        seen_codes: dict[str, int] = {}
 
         for tr in rows:
             cells = tr.find_all(["td", "th"])
@@ -332,6 +333,20 @@ class ERPAttendanceParser:
 
             # Lab classification
             is_lab = detect_is_lab(name, short_name, credits)
+
+            # Course code disambiguation for multi-component courses sharing a code (e.g. Theory & Tutorial/Lab)
+            if code in seen_codes:
+                seen_codes[code] += 1
+                s_up = short_name.upper()
+                n_up = name.upper()
+                if "- TUT" in s_up or s_up.endswith("TUT") or "TUTORIAL" in n_up:
+                    code = f"{code}-TUT"
+                elif "- PR" in s_up or s_up.endswith("PR") or "LAB" in n_up or is_lab:
+                    code = f"{code}-PR"
+                else:
+                    code = f"{code}-{seen_codes[code]}"
+            else:
+                seen_codes[code] = 1
 
             # Domain calculation
             try:

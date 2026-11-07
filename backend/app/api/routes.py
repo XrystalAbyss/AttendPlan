@@ -5,12 +5,19 @@ F1 persistent multi-semester, date-wise analytics, and reconciliation endpoints.
 """
 
 from __future__ import annotations
+from app.services.current_observations import latest_observations
+
+
+
+import calendar
+import logging
+import os
 
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.adapters.fixture_loader import load_sample_snapshot
@@ -23,10 +30,12 @@ from app.api.schemas import (
     DailyCourseItem,
     DayWiseDiscoveryResponse,
     DiscoverRequest,
+    HistoricalPlanResponse,
     IngestionEventResponse,
     IngestionUploadResponse,
     MonthlyAnalyticsItem,
     OverallDiscoveryResponse,
+    PilotSyncRequest,
     PortalSessionStatusResponse,
     SemesterHistoricalItem,
     SnapshotListItem,
@@ -34,10 +43,40 @@ from app.api.schemas import (
     SubjectAnalyticsItem,
     SubjectAnalyticsResponse,
     SubjectWiseDiscoveryResponse,
+    SyncDayWiseRequest,
+    SyncDayWiseResponse,
+    SyncJobResponse,
+    SyncSubjectWiseRequest,
+    SyncSubjectWiseResponse,
     TermAttendanceResponse,
     TermOptionItem,
     TermReconciliationResponse,
+    TermSyncScopeItem,
     WeekdayAnalyticsItem,
+    LoginOrchestrateRequest,
+    LoginOrchestrationResponse,
+    TotpCandidateResponse,
+    TotpEnrollRequest,
+    TotpInspectResponse,
+    TotpMfaAutofillRequest,
+    TotpMfaAutofillResponse,
+    TotpSettingsUpdateRequest,
+    TotpVerifyRequest,
+    TotpVerifyResponse,
+    HistoricalDiscoverRequest,
+    HistoricalDiscoveryResponse,
+    HistoricalImportRequest,
+    HistoricalPreviewRequest,
+    HistoricalPreviewResponse,
+    HistoricalTermItemResponse,
+    TermCoverageResponse,
+)
+
+
+from app.adapters.live_portal_extractor import (
+    BrowserNotConnectedError,
+    LivePortalExtractor,
+    SessionNotAuthenticatedError,
 )
 from app.adapters.portal_session import (
     AcademicTermDiscoveryAdapter,
@@ -45,7 +84,32 @@ from app.adapters.portal_session import (
     OverallAttendanceAdapter,
     PortalSessionManager,
     SubjectWiseAttendanceAdapter,
+    TermOption,
 )
+from app.adapters.qr_parser import QRParserAdapter, clean_base32_secret
+from app.domain.totp_models import (
+    SecureVaultUnavailableError,
+    TotpAccountCandidate,
+    TotpEnrollmentError,
+    TotpEnrollmentMetadata,
+    TotpStatusResponse,
+)
+from app.services.login_orchestrator import LoginOrchestrator
+from app.services.settings_service import (
+    SettingsPublicResponse,
+    SettingsService,
+    SettingsUpdateRequest,
+)
+from app.services.totp_vault_service import TotpVaultService
+
+
+
+from app.services.historical_backfill_service import HistoricalBackfillService
+from app.services.historical_discovery_service import HistoricalDiscoveryService
+from app.services.historical_planner import HistoricalSyncPlanner
+from app.services.sync_job_service import SyncJobService, _SYNC_LOCK
+
+
 from app.db.enums import IngestionOutcome
 from app.db.models import (
     AcademicTerm,
@@ -116,6 +180,8 @@ def seed_demo_sample_data(
 
     This operation is explicit and user-initiated; it is never triggered automatically on reads.
     """
+    if os.environ.get("ATTENDPLAN_ALLOW_SYNTHETIC_IMPORT") != "1":
+        raise HTTPException(status_code=403, detail="Synthetic imports are disabled in normal runtime.")
     try:
         sample = load_sample_snapshot(target_percentage=target)
         ingestor = IngestionService(db)
@@ -390,7 +456,7 @@ def get_monthly_analytics(
     obs_stmt = select(AttendancePeriodObservation).where(
         AttendancePeriodObservation.academic_term_id == term_id
     )
-    observations = db.scalars(obs_stmt).all()
+    observations = latest_observations(db.scalars(obs_stmt).all())
 
     obs_dicts = [
         {
@@ -432,7 +498,7 @@ def get_weekday_analytics(
     obs_stmt = select(AttendancePeriodObservation).where(
         AttendancePeriodObservation.academic_term_id == term_id
     )
-    observations = db.scalars(obs_stmt).all()
+    observations = latest_observations(db.scalars(obs_stmt).all())
 
     obs_dicts = [
         {
@@ -474,7 +540,7 @@ def get_daily_analytics(
         .where(AttendancePeriodObservation.academic_term_id == term_id)
         .order_by(AttendancePeriodObservation.attendance_date.asc())
     )
-    observations = db.scalars(obs_stmt).all()
+    observations = latest_observations(db.scalars(obs_stmt).all())
 
     obs_dicts = [
         {
@@ -864,6 +930,16 @@ def close_portal_browser() -> PortalSessionStatusResponse:
     )
 
 
+@router.post("/api/v1/portal/session/disconnect", tags=["Portal Discovery"])
+def disconnect_portal_session() -> dict[str, Any]:
+    """Disconnect and close dedicated browser process, freeing CDP resources."""
+    _portal_session_manager.close_session()
+    return {
+        "status": "disconnected",
+        "message": "Browser session closed and loopback CDP released successfully.",
+    }
+
+
 @router.post("/api/v1/portal/discover/terms", response_model=AcademicTermDiscoveryResponse, tags=["Portal Discovery"])
 def discover_academic_terms(payload: Optional[DiscoverRequest] = None) -> AcademicTermDiscoveryResponse:
     """Discover available academic years, semesters, and class mappings."""
@@ -952,3 +1028,1036 @@ def discover_overall_attendance(payload: Optional[DiscoverRequest] = None) -> Ov
         macro_attendance_percentage=res.macro_attendance_percentage,
         evidence=res.evidence,
     )
+
+
+# -------------------------------------------------------------
+# F2-B Live Synchronization & Sync Job State Machine Endpoints
+# -------------------------------------------------------------
+
+_live_portal_extractor = LivePortalExtractor(_portal_session_manager)
+
+
+@router.post("/api/v1/portal/sync/subject-wise", response_model=SyncSubjectWiseResponse, tags=["Portal Sync"])
+def sync_subject_wise_live(
+    payload: SyncSubjectWiseRequest,
+    db: Session = Depends(get_db),
+) -> SyncSubjectWiseResponse:
+    """Live extract and optionally persist Subject-Wise Attendance from portal."""
+    try:
+        res = _live_portal_extractor.extract_live_subject_wise(
+            academic_year=payload.academic_year,
+            semester=payload.semester,
+            class_id=payload.class_id,
+        )
+
+        snapshot_id = None
+        term_id = None
+        outcome_str = "PREVIEW_ONLY"
+
+        if payload.persist:
+            service = IngestionService(db)
+            db_snap, outcome = service.ingest_subject_wise_snapshot(
+                res.snapshot,
+                source="LIVE_PORTAL_AUTOMATED_SUBWISE",
+            )
+            snapshot_id = db_snap.id
+            term_id = db_snap.academic_term_id
+            outcome_str = outcome.value
+
+        return SyncSubjectWiseResponse(
+            status="SUCCESS" if res.validation.is_valid else "QUARANTINED",
+            snapshot_id=snapshot_id,
+            term_id=term_id,
+            outcome=outcome_str,
+            record_count=len(res.snapshot.courses),
+            academic_year=res.academic_year,
+            semester=res.semester,
+            class_name=res.class_identifier,
+            aggregate_percentage=res.snapshot.summary.overall_percentage,
+            validation={
+                "is_valid": res.validation.is_valid,
+                "percentage_deviations": res.validation.percentage_deviations,
+                "warnings": res.validation.warnings,
+                "quarantined": res.validation.quarantined,
+                "quarantine_reason": res.validation.quarantine_reason,
+            },
+        )
+    except SessionNotAuthenticatedError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except BrowserNotConnectedError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Subject-wise extraction failed: {str(e)}")
+
+
+@router.post("/api/v1/portal/sync/day-wise", response_model=SyncDayWiseResponse, tags=["Portal Sync"])
+def sync_day_wise_live(
+    payload: SyncDayWiseRequest,
+    db: Session = Depends(get_db),
+) -> SyncDayWiseResponse:
+    """Live extract and optionally persist Day-Wise Attendance timetable matrix from portal."""
+    try:
+        res = _live_portal_extractor.extract_live_day_wise(
+            academic_year=payload.academic_year,
+            semester=payload.semester,
+            class_id=payload.class_id,
+            month=payload.month,
+            from_date=payload.from_date,
+            to_date=payload.to_date,
+            show_course_name=payload.show_course_name,
+        )
+
+        batch_id = None
+        term_id = None
+        outcome_str = "PREVIEW_ONLY"
+
+        if payload.persist:
+            service = IngestionService(db)
+            db_batch, outcome = service.ingest_daywise_batch(
+                res.batch,
+                source="LIVE_PORTAL_AUTOMATED_DAYWISE",
+            )
+            batch_id = db_batch.id
+            term_id = db_batch.academic_term_id
+            outcome_str = outcome.value
+
+        present_periods = sum(o.attended_period_count for o in res.batch.observations)
+        delivered_periods = sum(o.delivered_period_count for o in res.batch.observations)
+        unmapped_count = sum(1 for o in res.batch.observations if o.delivered_period_count > 0 and not o.source_course_label)
+
+        return SyncDayWiseResponse(
+            status="SUCCESS" if res.validation.is_valid else "WARNING",
+            batch_id=batch_id,
+            term_id=term_id,
+            outcome=outcome_str,
+            coverage_start=res.coverage_start,
+            coverage_end=res.coverage_end,
+            total_observations=len(res.batch.observations),
+            total_present=present_periods,
+            total_delivered=delivered_periods,
+            unmapped_count=unmapped_count,
+            validation={
+                "is_valid": res.validation.is_valid,
+                "course_attribution_active": res.course_attribution_active,
+                "warnings": res.validation.warnings,
+                "locally_computed": res.validation.locally_computed_totals,
+            },
+        )
+    except SessionNotAuthenticatedError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except BrowserNotConnectedError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Day-wise extraction failed: {str(e)}")
+
+
+@router.post("/api/v1/portal/sync/pilot", response_model=SyncJobResponse, tags=["Portal Sync"])
+def run_pilot_sync_endpoint(
+    payload: PilotSyncRequest,
+    db: Session = Depends(get_db),
+) -> SyncJobResponse:
+    """Execute Gate 4 Pilot Synchronization (Subject-Wise + Selected Month Day-Wise + Persistence + Reconciliation)."""
+    service = SyncJobService(db, extractor=_live_portal_extractor)
+    job = service.create_job(
+        source_scope="CURRENT_SEMESTER_PILOT",
+        progress_total=4,
+        details={
+            "month": payload.month,
+            "academic_year": payload.academic_year,
+            "semester": payload.semester,
+        },
+    )
+
+    # Run pilot synchronously or state-machine tracked
+    job = service.run_pilot_sync(
+        job_id=job.id,
+        month=payload.month,
+        academic_year=payload.academic_year,
+        semester=payload.semester,
+        class_id=payload.class_id,
+    )
+
+    return SyncJobResponse(
+        id=job.id,
+        academic_term_id=job.academic_term_id,
+        source_scope=job.source_scope,
+        state=job.state,
+        current_step=job.current_step,
+        start_timestamp=job.start_timestamp,
+        completion_timestamp=job.completion_timestamp,
+        completed_batches=job.completed_batches,
+        failed_batches=job.failed_batches,
+        progress_total=job.progress_total,
+        progress_current=job.progress_current,
+        safe_diagnostic_message=job.safe_diagnostic_message,
+        details=job.details,
+    )
+
+
+@router.get("/api/v1/portal/sync/historical-plan", response_model=HistoricalPlanResponse, tags=["Portal Sync"])
+def get_historical_sync_plan(
+    db: Session = Depends(get_db),
+) -> HistoricalPlanResponse:
+    """Discover accessible terms and construct a bounded multi-semester backfill plan."""
+    html_content = None
+    if _portal_session_manager.is_cdp_reachable():
+        _url, html_content = _portal_session_manager.fetch_portal_page_content()
+
+    if html_content:
+        discovery = AcademicTermDiscoveryAdapter.parse_from_html(html_content)
+        years = discovery.academic_years
+        semesters = discovery.semesters
+        classes = discovery.classes
+    else:
+        # Fallback to standard catalog terms for offline preview
+        years = [TermOption(value="2026-2027", label="2026-2027"), TermOption(value="2025-2026", label="2025-2026")]
+        semesters = [TermOption(value="5", label="Semester 5"), TermOption(value="4", label="Semester 4")]
+        classes = [TermOption(value="2582", label="B.Tech CSE AIML-Sem 5")]
+
+    planner = HistoricalSyncPlanner(db)
+    summary = planner.build_plan(years, semesters, classes)
+
+    return HistoricalPlanResponse(
+        discovered_academic_years=summary.discovered_academic_years,
+        terms=[
+            TermSyncScopeItem(
+                academic_year=t.academic_year,
+                semester=t.semester,
+                class_identifier=t.class_identifier,
+                candidate_months=t.candidate_months,
+                candidate_month_labels=t.candidate_month_labels,
+                estimated_requests=t.estimated_requests,
+                has_subject_snapshot=t.has_subject_snapshot,
+                has_daywise_batches=t.has_daywise_batches,
+                existing_batches_count=t.existing_batches_count,
+                selected=t.selected,
+            )
+            for t in summary.terms
+        ],
+        total_terms_count=summary.total_terms_count,
+        total_estimated_requests=summary.total_estimated_requests,
+        pacing_guidance=summary.pacing_guidance,
+    )
+
+
+def sanitize_sync_job_details(details: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Ensure generic sync job responses never expose unscrubbed raw payloads."""
+    if not details or "captured_payload" not in details:
+        return details
+    payload = details.get("captured_payload")
+    if isinstance(payload, dict) and payload.get("redacted"):
+        return details
+    sanitized = dict(details)
+    course_count = len(payload.get("courses", [])) if isinstance(payload, dict) and "courses" in payload else None
+    sanitized["captured_payload"] = {
+        "redacted": True,
+        "course_count": course_count,
+        "summary": "Source payload redacted from public sync job endpoint."
+    }
+    return sanitized
+
+
+@router.get("/api/v1/portal/sync/jobs/latest", response_model=SyncJobResponse, tags=["Portal Sync"])
+def get_latest_sync_job(db: Session = Depends(get_db)) -> SyncJobResponse:
+    """Get the most recent synchronization job."""
+    service = SyncJobService(db)
+    job = service.get_latest_job()
+    if not job:
+        raise HTTPException(status_code=404, detail="No sync jobs have been created yet.")
+    return SyncJobResponse(
+        id=job.id,
+        academic_term_id=job.academic_term_id,
+        source_scope=job.source_scope,
+        state=job.state,
+        current_step=job.current_step,
+        start_timestamp=job.start_timestamp,
+        completion_timestamp=job.completion_timestamp,
+        completed_batches=job.completed_batches,
+        failed_batches=job.failed_batches,
+        progress_total=job.progress_total,
+        progress_current=job.progress_current,
+        safe_diagnostic_message=job.safe_diagnostic_message,
+        details=sanitize_sync_job_details(job.details),
+    )
+
+
+@router.get("/api/v1/portal/sync/jobs/{job_id}", response_model=SyncJobResponse, tags=["Portal Sync"])
+def get_sync_job_by_id(job_id: str, db: Session = Depends(get_db)) -> SyncJobResponse:
+    """Fetch sync job status by unique job identifier."""
+    service = SyncJobService(db)
+    job = service.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Sync job {job_id} not found.")
+    return SyncJobResponse(
+        id=job.id,
+        academic_term_id=job.academic_term_id,
+        source_scope=job.source_scope,
+        state=job.state,
+        current_step=job.current_step,
+        start_timestamp=job.start_timestamp,
+        completion_timestamp=job.completion_timestamp,
+        completed_batches=job.completed_batches,
+        failed_batches=job.failed_batches,
+        progress_total=job.progress_total,
+        progress_current=job.progress_current,
+        safe_diagnostic_message=job.safe_diagnostic_message,
+        details=sanitize_sync_job_details(job.details),
+    )
+
+
+@router.post("/api/v1/portal/sync/jobs/{job_id}/cancel", response_model=SyncJobResponse, tags=["Portal Sync"])
+def cancel_sync_job(job_id: str, db: Session = Depends(get_db)) -> SyncJobResponse:
+    """Request safe cancellation of an active sync job."""
+    service = SyncJobService(db)
+    job = service.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Sync job {job_id} not found.")
+    updated = service.cancel_job(job_id)
+    return SyncJobResponse(
+        id=updated.id,
+        academic_term_id=updated.academic_term_id,
+        source_scope=updated.source_scope,
+        state=updated.state,
+        current_step=updated.current_step,
+        start_timestamp=updated.start_timestamp,
+        completion_timestamp=updated.completion_timestamp,
+        completed_batches=updated.completed_batches,
+        failed_batches=updated.failed_batches,
+        progress_total=updated.progress_total,
+        progress_current=updated.progress_current,
+        safe_diagnostic_message=updated.safe_diagnostic_message,
+        details=sanitize_sync_job_details(updated.details),
+    )
+
+
+# -------------------------------------------------------------
+# F2-C & Addendum: Authentication, Vault & Login Orchestrator
+# -------------------------------------------------------------
+
+_settings_service = SettingsService()
+_vault_service = TotpVaultService()
+_login_orchestrator = LoginOrchestrator(
+    session_manager=_portal_session_manager,
+    settings_service=_settings_service,
+    vault_service=_vault_service,
+)
+
+
+@router.get("/api/v1/auth/settings", response_model=SettingsPublicResponse, tags=["Authentication"])
+def get_auth_settings() -> SettingsPublicResponse:
+    """Retrieve non-sensitive authentication and automation settings with masked mobile."""
+    public = _settings_service.get_public_settings()
+    metadata = _vault_service.get_masked_account_metadata()
+    if metadata:
+        public.auto_totp_autofill = metadata.auto_autofill_enabled
+        public.auto_totp_submit = metadata.auto_submit_enabled
+    return public
+
+
+@router.post("/api/v1/auth/settings", response_model=SettingsPublicResponse, tags=["Authentication"])
+def update_auth_settings(req: SettingsUpdateRequest) -> SettingsPublicResponse:
+    """Update student mobile number and login automation toggles."""
+    try:
+        _settings_service.update_settings(req)
+        if req.auto_totp_autofill is not None or req.auto_totp_submit is not None:
+            _vault_service.update_automation_settings(auto_autofill=req.auto_totp_autofill, auto_submit=req.auto_totp_submit)
+        return get_auth_settings()
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update settings: {str(e)}")
+
+
+@router.get("/api/v1/auth/totp/status", response_model=TotpStatusResponse, tags=["Authentication"])
+def get_totp_status() -> TotpStatusResponse:
+    """Retrieve non-sensitive status of Windows Credential Manager TOTP vault."""
+    return _vault_service.get_enrollment_status()
+
+
+@router.post("/api/v1/auth/totp/inspect", response_model=TotpInspectResponse, tags=["Authentication"])
+async def inspect_totp_input(
+    file: Optional[UploadFile] = File(default=None),
+    provisioning_input: Optional[str] = Form(default=None),
+) -> TotpInspectResponse:
+    """Inspect and decode offline QR image or provisioning URI without saving to vault."""
+    raw_text = ""
+    source_fmt = "UNKNOWN"
+    if file:
+        img_bytes = await file.read()
+        raw_text = QRParserAdapter.decode_qr_image(img_bytes)
+        source_fmt = "QR_IMAGE"
+    elif provisioning_input:
+        raw_text = provisioning_input.strip()
+        if raw_text.startswith("otpauth-migration://"):
+            source_fmt = "GOOGLE_MIGRATION"
+        elif raw_text.startswith("otpauth://"):
+            source_fmt = "STANDARD_TOTP"
+        else:
+            source_fmt = "MANUAL_BASE32"
+    else:
+        raise HTTPException(status_code=400, detail="Must provide either a QR image file or provisioning input text.")
+
+    try:
+        candidates = QRParserAdapter.parse_provisioning_input(raw_text)
+        return TotpInspectResponse(
+            candidates=[
+                TotpCandidateResponse(
+                    candidate_id=f"cand_{i}",
+                    issuer=c.issuer,
+                    masked_account=c.masked_account,
+                    digits=c.digits,
+                    period=c.period,
+                    algorithm=c.algorithm,
+                    source_type=c.source_type,
+                )
+                for i, c in enumerate(candidates)
+            ],
+            total_found=len(candidates),
+            source_format=source_fmt,
+        )
+    except TotpEnrollmentError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Inspection failed: {str(e)}")
+
+
+@router.post("/api/v1/auth/totp/enroll", response_model=TotpEnrollmentMetadata, tags=["Authentication"])
+def enroll_totp_secret(payload: TotpEnrollRequest) -> TotpEnrollmentMetadata:
+    """Enroll candidate authenticator secret into Windows Credential Manager."""
+    try:
+        candidate: Optional[TotpAccountCandidate] = None
+
+        if payload.provisioning_input and payload.provisioning_input.strip():
+            candidates = QRParserAdapter.parse_provisioning_input(payload.provisioning_input.strip())
+            if len(candidates) > 1:
+                if not payload.candidate_id:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=(
+                            f"Migration export contains multiple accounts ({len(candidates)} found). "
+                            "Explicit selection required via candidate_id."
+                        ),
+                    )
+                target_idx: Optional[int] = None
+                if payload.candidate_id.startswith("cand_"):
+                    try:
+                        target_idx = int(payload.candidate_id.replace("cand_", ""))
+                    except ValueError:
+                        pass
+                else:
+                    try:
+                        target_idx = int(payload.candidate_id)
+                    except ValueError:
+                        pass
+
+                if target_idx is not None and 0 <= target_idx < len(candidates):
+                    candidate = candidates[target_idx]
+                else:
+                    matched = [c for c in candidates if c.account_name == payload.candidate_id]
+                    if len(matched) == 1:
+                        candidate = matched[0]
+                    else:
+                        raise HTTPException(
+                            status_code=422,
+                            detail=f"Candidate ID '{payload.candidate_id}' not found among {len(candidates)} accounts.",
+                        )
+                # Discard bulk export from memory immediately
+                candidates.clear()
+            elif len(candidates) == 1:
+                candidate = candidates[0]
+                candidates.clear()
+        elif payload.secret_base32 and payload.secret_base32.strip():
+            cleaned = clean_base32_secret(payload.secret_base32)
+            candidate = TotpAccountCandidate(
+                issuer=payload.issuer or "iCloudEMS",
+                account_name=payload.account_label or "student",
+                secret_base32=cleaned,
+            )
+
+        if not candidate:
+            raise HTTPException(
+                status_code=400,
+                detail="Must provide either provisioning_input (URI/export) or secret_base32 to enroll.",
+            )
+
+        meta = _vault_service.enroll(
+            candidate=candidate,
+            auto_autofill=payload.auto_autofill_enabled,
+            auto_submit=payload.auto_submit_enabled,
+        )
+        return meta
+    except HTTPException:
+        raise
+    except SecureVaultUnavailableError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except TotpEnrollmentError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Enrollment failed: {str(e)}")
+
+
+@router.post("/api/v1/auth/totp/enroll-image", response_model=TotpEnrollmentMetadata, tags=["Authentication"])
+async def enroll_totp_image(
+    file: UploadFile = File(...),
+    candidate_id: Optional[str] = Form(default=None),
+    auto_autofill_enabled: bool = Form(default=False),
+    auto_submit_enabled: bool = Form(default=False),
+) -> TotpEnrollmentMetadata:
+    """Decode offline QR image, select chosen candidate, and commit to Windows vault.
+
+    The decoded image and any unselected account candidates are discarded immediately.
+    """
+    try:
+        img_bytes = await file.read()
+        raw_text = QRParserAdapter.decode_qr_image(img_bytes)
+        del img_bytes
+
+        candidates = QRParserAdapter.parse_provisioning_input(raw_text)
+        del raw_text
+
+        candidate: Optional[TotpAccountCandidate] = None
+        if len(candidates) > 1:
+            if not candidate_id:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Migration QR contains multiple accounts ({len(candidates)} found). "
+                        "Explicit selection required via candidate_id."
+                    ),
+                )
+            target_idx: Optional[int] = None
+            if candidate_id.startswith("cand_"):
+                try:
+                    target_idx = int(candidate_id.replace("cand_", ""))
+                except ValueError:
+                    pass
+            else:
+                try:
+                    target_idx = int(candidate_id)
+                except ValueError:
+                    pass
+
+            if target_idx is not None and 0 <= target_idx < len(candidates):
+                candidate = candidates[target_idx]
+            else:
+                matched = [c for c in candidates if c.account_name == candidate_id]
+                if len(matched) == 1:
+                    candidate = matched[0]
+                else:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"Candidate ID '{candidate_id}' not found among {len(candidates)} accounts.",
+                    )
+            candidates.clear()
+        elif len(candidates) == 1:
+            candidate = candidates[0]
+            candidates.clear()
+
+        if not candidate:
+            raise HTTPException(status_code=400, detail="No valid TOTP account found in uploaded QR image.")
+
+        meta = _vault_service.enroll(
+            candidate=candidate,
+            auto_autofill=auto_autofill_enabled,
+            auto_submit=auto_submit_enabled,
+        )
+        return meta
+    except HTTPException:
+        raise
+    except SecureVaultUnavailableError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except TotpEnrollmentError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"QR image enrollment failed: {str(e)}")
+
+
+@router.post("/api/v1/auth/totp/verify", response_model=TotpVerifyResponse, tags=["Authentication"])
+def verify_totp_code(payload: TotpVerifyRequest) -> TotpVerifyResponse:
+    """Verify test code against currently enrolled secret without exposing secret."""
+    try:
+        valid = _vault_service.verify_enrollment(payload.code)
+        msg = "Verification successful. TOTP engine is synchronized." if valid else "Verification failed. Code did not match active window."
+        return TotpVerifyResponse(valid=valid, message=msg)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Verification error: {str(e)}")
+
+
+@router.delete("/api/v1/auth/totp/enrollment", tags=["Authentication"])
+def delete_totp_enrollment() -> dict[str, Any]:
+    """Wipe authenticator secret from Windows Credential Manager and delete local metadata."""
+    success = _vault_service.remove_enrollment()
+    return {"success": success, "message": "Enrolled authenticator secret removed from local vault."}
+
+
+@router.patch("/api/v1/auth/totp/settings", response_model=TotpEnrollmentMetadata, tags=["Authentication"])
+def update_totp_settings(payload: TotpSettingsUpdateRequest) -> TotpEnrollmentMetadata:
+    """Update TOTP automation flags (auto-autofill and auto-submit)."""
+    meta = _vault_service.update_automation_settings(
+        auto_autofill=payload.auto_autofill_enabled,
+        auto_submit=payload.auto_submit_enabled,
+    )
+    if not meta:
+        raise HTTPException(status_code=404, detail="No active enrollment found in vault.")
+    _settings_service.update_settings(SettingsUpdateRequest(
+        auto_totp_autofill=meta.auto_autofill_enabled, auto_totp_submit=meta.auto_submit_enabled,
+    ))
+    return meta
+
+
+@router.post("/api/v1/auth/totp/autofill", response_model=TotpMfaAutofillResponse, tags=["Authentication"])
+def autofill_totp_mfa(payload: TotpMfaAutofillRequest) -> TotpMfaAutofillResponse:
+    """Autofill active Keycloak TOTP challenge from Windows Credential Manager."""
+    if not _SYNC_LOCK.acquire(blocking=False):
+        raise HTTPException(409, "The portal is busy connecting or discovering. Wait for it to finish before autofilling.")
+    try:
+        res = _portal_session_manager.autofill_keycloak_mfa(
+            vault_service=_vault_service, force_submit=payload.force_submit,
+        )
+    finally:
+        _SYNC_LOCK.release()
+    return TotpMfaAutofillResponse(
+        success=res.get("success", False),
+        submitted=res.get("submitted", False),
+        redirected=res.get("redirected", False),
+        message=res.get("message", ""),
+        error=res.get("error"),
+    )
+
+
+@router.post("/api/v1/auth/login/orchestrate", response_model=LoginOrchestrationResponse, tags=["Authentication"])
+def orchestrate_login(payload: Optional[LoginOrchestrateRequest] = None) -> LoginOrchestrationResponse:
+    """Execute complete end-to-end automated mobile + TOTP login orchestrator."""
+    force_submit = payload.force_submit if payload else None
+    if not _SYNC_LOCK.acquire(blocking=False):
+        raise HTTPException(409, "The portal is busy connecting or discovering. Wait for it to finish before starting another login.")
+    try:
+        res = _login_orchestrator.orchestrate_login(force_submit=force_submit)
+    finally:
+        _SYNC_LOCK.release()
+    return LoginOrchestrationResponse(
+        state=res.state.value,
+        step=res.step,
+        success=res.success,
+        redirected=res.redirected,
+        message=res.message,
+        current_url=res.current_url,
+        has_saved_mobile=res.has_saved_mobile,
+        is_totp_enrolled=res.is_totp_enrolled,
+        details=res.details,
+    )
+
+
+@router.get("/api/v1/auth/login/status", response_model=LoginOrchestrationResponse, tags=["Authentication"])
+def get_login_status() -> LoginOrchestrationResponse:
+    """Get current status of the Keycloak login state machine."""
+    res = _login_orchestrator.get_status()
+    return LoginOrchestrationResponse(
+        state=res.state.value,
+        step=res.step,
+        success=res.success,
+        redirected=res.redirected,
+        message=res.message,
+        current_url=res.current_url,
+        has_saved_mobile=res.has_saved_mobile,
+        is_totp_enrolled=res.is_totp_enrolled,
+        details=res.details,
+    )
+
+
+@router.post("/api/v1/auth/backup/export", tags=["Authentication"])
+def export_database_backup(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Create a verified, timestamped backup of the user's SQLite database."""
+    import datetime
+    import sqlite3
+    from app.db.session import get_default_db_path
+
+    db_path = get_default_db_path()
+    if not db_path.exists():
+        raise HTTPException(status_code=404, detail="Database file does not exist.")
+
+    backups_dir = db_path.parent / "backups"
+    backups_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_file = backups_dir / f"attendplan_backup_{timestamp}.sqlite3"
+
+    src_conn = sqlite3.connect(str(db_path))
+    dst_conn = sqlite3.connect(str(backup_file))
+    try:
+        src_conn.backup(dst_conn)
+    finally:
+        dst_conn.close()
+        src_conn.close()
+
+    backup_size = backup_file.stat().st_size
+    return {
+        "status": "success",
+        "backup_path": str(backup_file),
+        "backup_filename": backup_file.name,
+        "backup_bytes": backup_size,
+        "created_at": datetime.datetime.now().isoformat(),
+    }
+
+
+# -------------------------------------------------------------
+# F2-E: Multi-Semester Historical Discovery, Backfill & Coverage
+# -------------------------------------------------------------
+
+
+def _map_inventory_item(item: Any) -> HistoricalTermItemResponse:
+    return HistoricalTermItemResponse(
+        term_key=item.term_key,
+        academic_year=item.academic_year,
+        semester_number=item.semester_number,
+        class_identifier=item.class_identifier,
+        display_label=item.display_label,
+        class_display_label=item.class_display_label,
+        status=item.status.value if hasattr(item.status, "value") else str(item.status),
+        has_subject_summary=item.has_subject_summary,
+        has_daywise_data=item.has_daywise_data,
+        existing_courses_count=item.existing_courses_count,
+        existing_observations_count=item.existing_observations_count,
+        attended_sum=item.attended_sum,
+        delivered_sum=item.delivered_sum,
+        percentage=item.percentage,
+        discovered_at=item.discovered_at,
+        last_sync_timestamp=item.last_sync_timestamp,
+        candidate_months=item.candidate_months,
+        candidate_month_labels=item.candidate_month_labels,
+        estimated_requests=item.estimated_requests,
+        coverage_state=item.coverage_state.value if hasattr(item.coverage_state, "value") else str(item.coverage_state),
+        reconciliation_verdict=item.reconciliation_verdict.value if hasattr(item.reconciliation_verdict, "value") else str(item.reconciliation_verdict),
+        error_message=item.error_message,
+    )
+
+
+@router.get("/api/v1/historical/terms", response_model=HistoricalDiscoveryResponse, tags=["Historical Attendance"])
+def get_historical_terms(db: Session = Depends(get_db)) -> HistoricalDiscoveryResponse:
+    """Retrieve personal attendance history term inventory discovered or persisted locally."""
+    service = HistoricalDiscoveryService(db)
+    inv = service.get_persisted_inventory()
+    return HistoricalDiscoveryResponse(
+        terms=[_map_inventory_item(t) for t in inv.terms],
+        discovered_years=inv.discovered_years,
+        total_terms_count=inv.total_terms_count,
+        available_terms_count=inv.available_terms_count,
+        imported_terms_count=inv.imported_terms_count,
+        discovery_timestamp=inv.discovery_timestamp,
+        provenance=inv.provenance,
+    )
+
+
+@router.post("/api/v1/historical/discover", response_model=HistoricalDiscoveryResponse, tags=["Historical Attendance"])
+def discover_historical_terms(
+    payload: Optional[HistoricalDiscoverRequest] = None,
+    db: Session = Depends(get_db),
+) -> HistoricalDiscoveryResponse:
+    """Discover available academic terms from live portal DOM or provided HTML."""
+    service = HistoricalDiscoveryService(db)
+    if payload and payload.html_content:
+        inv = service.discover_inventory_from_html(payload.html_content, provenance="USER_SUPPLIED_HTML")
+    else:
+        try:
+            inv = service.discover_live(_portal_session_manager)
+        except Exception:
+            raise HTTPException(status_code=409, detail="Discovery could not verify dependent filters. Open the authenticated attendance page and retry.") from None
+
+    return HistoricalDiscoveryResponse(
+        terms=[_map_inventory_item(t) for t in inv.terms],
+        discovered_years=inv.discovered_years,
+        total_terms_count=inv.total_terms_count,
+        available_terms_count=inv.available_terms_count,
+        imported_terms_count=inv.imported_terms_count,
+        discovery_timestamp=inv.discovery_timestamp,
+        provenance=inv.provenance,
+    )
+
+
+@router.post("/api/v1/historical/preview", response_model=HistoricalPreviewResponse, tags=["Historical Attendance"])
+def preview_historical_import(
+    payload: Optional[HistoricalPreviewRequest] = None,
+    db: Session = Depends(get_db),
+) -> HistoricalPreviewResponse:
+    """Preview workload, requests, and conservative pacing for proposed term backfill."""
+    service = HistoricalDiscoveryService(db)
+    inv = service.get_persisted_inventory()
+    keys = payload.selected_term_keys if payload else None
+    try:
+        prev = service.build_preview(inv, selected_term_keys=keys)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Selected term was not discovered.") from None
+    approval_id = None
+    source_course_count = None
+    if len(prev.selected_terms) == 1 and prev.selected_terms[0].details.get("selector_verified"):
+        from app.adapters.portal_safety import validate_result
+        term = prev.selected_terms[0]
+        if not _SYNC_LOCK.acquire(blocking=False):
+            raise HTTPException(409, "The portal is busy. Wait for background discovery to finish before previewing.")
+        try:
+            source = _live_portal_extractor.extract_live_subject_wise(
+                academic_year=term.academic_year, semester=term.semester_number, class_id=term.class_identifier,
+            )
+            validate_result(source, term.academic_year, term.semester_number, term.class_identifier or "", term.class_display_label or "")
+            source_course_count = len(source.snapshot.courses)
+        except Exception as error:
+            logging.getLogger(__name__).warning("Historical preview stopped: %s", type(error).__name__)
+            raise HTTPException(409, "The selected semester's source could not be verified. No attendance was imported.") from None
+        finally:
+            _SYNC_LOCK.release()
+        from app.db.models import SyncJob
+        preview_job = SyncJob(source_scope="HISTORICAL_PILOT_PREVIEW", state="COMPLETED",
+                              details={"selected_term_keys": keys, "import_daywise": False})
+        db.add(preview_job)
+        db.commit()
+        db.refresh(preview_job)
+        approval_id = preview_job.id
+
+    return HistoricalPreviewResponse(
+        source_course_count=source_course_count,
+        approval_id=approval_id,
+        selected_terms=[_map_inventory_item(t) for t in prev.selected_terms],
+        total_selected_terms=prev.total_selected_terms,
+        total_estimated_requests=prev.total_estimated_requests,
+        estimated_pacing_seconds=prev.estimated_pacing_seconds,
+        pacing_guidance=prev.pacing_guidance,
+        requires_user_approval=prev.requires_user_approval,
+    )
+
+
+@router.post("/api/v1/historical/import", response_model=SyncJobResponse, tags=["Historical Attendance"])
+def start_historical_import(
+    payload: HistoricalImportRequest,
+    db: Session = Depends(get_db),
+) -> SyncJobResponse:
+    """Start controlled multi-semester historical synchronization with conservative pacing."""
+    # Live route/selector verification is required before enabling the supervised pilot.
+    if os.environ.get("ATTENDPLAN_ENABLE_HISTORICAL_PILOT") != "1":
+        raise HTTPException(status_code=409, detail="Historical pilot is disabled pending supervised route verification.")
+    if len(payload.selected_term_keys) != 1:
+        raise HTTPException(status_code=400, detail="The supervised pilot requires exactly one term.")
+    if payload.import_daywise or payload.max_months_per_term is not None:
+        raise HTTPException(status_code=400, detail="First pilot is subject-summary only. Day-wise scope requires separate approval.")
+    inv = HistoricalDiscoveryService(db).get_persisted_inventory()
+    selected_item = next((t for t in inv.terms if t.term_key == payload.selected_term_keys[0]), None)
+    if not selected_item or not selected_item.details.get("selector_verified"):
+        raise HTTPException(status_code=409, detail="Run verified dependent-selector discovery before the pilot.")
+    from app.db.models import SyncJob
+    from datetime import timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
+    preview_job = db.get(SyncJob, payload.approval_id) if payload.approval_id else None
+    if not preview_job or preview_job.source_scope != "HISTORICAL_PILOT_PREVIEW" or preview_job.details != {
+        "selected_term_keys": payload.selected_term_keys, "import_daywise": False
+    }:
+        raise HTTPException(status_code=409, detail="Preview this exact semester and approve its subject-summary scope first.")
+    claimed = db.execute(update(SyncJob).where(
+        SyncJob.id == preview_job.id, SyncJob.state == "COMPLETED", SyncJob.created_at >= cutoff
+    ).values(state="APPROVED").returning(SyncJob.id).execution_options(synchronize_session=False)).scalar_one_or_none()
+    if claimed is None:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Preview expired or was already used. Create a fresh preview.")
+    db.commit()
+
+    sync_service = SyncJobService(db, extractor=_live_portal_extractor)
+    job = sync_service.create_job(
+        source_scope="HISTORICAL_MULTI_SEMESTER_BACKFILL",
+        progress_total=1,
+        details={
+            "selected_term_keys": payload.selected_term_keys,
+            "import_daywise": payload.import_daywise,
+            "max_months_per_term": payload.max_months_per_term,
+        },
+    )
+
+    backfill_service = HistoricalBackfillService(db, extractor=_live_portal_extractor)
+    job = backfill_service.run_historical_backfill(
+        job_id=job.id,
+        selected_term_keys=payload.selected_term_keys,
+        import_daywise=payload.import_daywise,
+        max_months_per_term=payload.max_months_per_term,
+    )
+
+    return SyncJobResponse(
+        id=job.id,
+        academic_term_id=job.academic_term_id,
+        source_scope=job.source_scope,
+        state=job.state,
+        current_step=job.current_step,
+        start_timestamp=job.start_timestamp,
+        completion_timestamp=job.completion_timestamp,
+        completed_batches=job.completed_batches,
+        failed_batches=job.failed_batches,
+        progress_total=job.progress_total,
+        progress_current=job.progress_current,
+        safe_diagnostic_message=job.safe_diagnostic_message,
+        details=job.details,
+    )
+
+
+@router.get("/api/v1/historical/import/progress", response_model=SyncJobResponse, tags=["Historical Attendance"])
+def get_historical_import_progress(db: Session = Depends(get_db)) -> SyncJobResponse:
+    """Fetch status and progress of the currently running or most recent historical sync job."""
+    from app.db.models import SyncJob
+    job = db.scalars(select(SyncJob).where(SyncJob.source_scope == "HISTORICAL_MULTI_SEMESTER_BACKFILL").order_by(SyncJob.created_at.desc())).first()
+
+    if not job:
+        raise HTTPException(status_code=404, detail="No historical synchronization jobs found.")
+
+    return SyncJobResponse(
+        id=job.id,
+        academic_term_id=job.academic_term_id,
+        source_scope=job.source_scope,
+        state=job.state,
+        current_step=job.current_step,
+        start_timestamp=job.start_timestamp,
+        completion_timestamp=job.completion_timestamp,
+        completed_batches=job.completed_batches,
+        failed_batches=job.failed_batches,
+        progress_total=job.progress_total,
+        progress_current=job.progress_current,
+        safe_diagnostic_message=job.safe_diagnostic_message,
+        details=job.details,
+    )
+
+
+@router.post("/api/v1/historical/import/cancel", response_model=SyncJobResponse, tags=["Historical Attendance"])
+def cancel_historical_import(db: Session = Depends(get_db)) -> SyncJobResponse:
+    """Request clean cancellation of an active historical synchronization job."""
+    sync_service = SyncJobService(db)
+    from app.db.models import SyncJob
+    active = db.scalars(select(SyncJob).where(
+        SyncJob.source_scope == "HISTORICAL_MULTI_SEMESTER_BACKFILL",
+        SyncJob.state.in_(["IDLE", "SYNCING_SUBJECTS", "SYNCING_DAYWISE", "PERSISTING", "RECONCILING"]),
+    ).order_by(SyncJob.created_at.desc())).first()
+    if not active:
+        raise HTTPException(status_code=404, detail="No active historical synchronization job is running.")
+
+    job = sync_service.cancel_job(active.id)
+    return SyncJobResponse(
+        id=job.id,
+        academic_term_id=job.academic_term_id,
+        source_scope=job.source_scope,
+        state=job.state,
+        current_step=job.current_step,
+        start_timestamp=job.start_timestamp,
+        completion_timestamp=job.completion_timestamp,
+        completed_batches=job.completed_batches,
+        failed_batches=job.failed_batches,
+        progress_total=job.progress_total,
+        progress_current=job.progress_current,
+        safe_diagnostic_message=job.safe_diagnostic_message,
+        details=job.details,
+    )
+
+
+@router.get("/api/v1/historical/overview", response_model=AcademicHistoryResponse, tags=["Historical Attendance"])
+def get_historical_overview(
+    target: float = Query(default=75.0, gt=0.0, lt=100.0),
+    db: Session = Depends(get_db),
+) -> AcademicHistoryResponse:
+    """Retrieve cross-semester attendance summary and historical progression across all terms."""
+    return get_academic_history(target=target, db=db)
+
+
+@router.get("/api/v1/terms/{term_id}/coverage", response_model=TermCoverageResponse, tags=["Terms"])
+def get_term_coverage_endpoint(term_id: str, db: Session = Depends(get_db)) -> TermCoverageResponse:
+    """Retrieve granular data coverage report for a specific academic term."""
+    service = HistoricalDiscoveryService(db)
+    try:
+        cov = service.get_term_coverage(term_id)
+        return TermCoverageResponse(
+            term_id=cov.term_id,
+            academic_year=cov.academic_year,
+            semester_number=cov.semester_number,
+            class_identifier=cov.class_identifier,
+            coverage_state=cov.coverage_state.value,
+            has_subject_summary=cov.has_subject_summary,
+            subject_snapshot_count=cov.subject_snapshot_count,
+            subject_courses_count=cov.subject_courses_count,
+            candidate_months=cov.candidate_months,
+            candidate_month_labels=cov.candidate_month_labels,
+            months_attempted=cov.months_attempted,
+            months_completed=cov.months_completed,
+            unique_instructional_dates=cov.unique_instructional_dates,
+            unique_instructional_periods=cov.unique_instructional_periods,
+            mapped_periods=cov.mapped_periods,
+            unmapped_periods=cov.unmapped_periods,
+            missing_or_unreported_periods=cov.missing_or_unreported_periods,
+            source_errors_count=cov.source_errors_count,
+            reconciliation_verdict=cov.reconciliation_verdict.value,
+            details=cov.details,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+
+
+
+@router.get("/api/v1/terms/{term_id}/attendance/periods", tags=["Analytics"])
+def get_attendance_periods(term_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Local period ledger; preserve unknown status and explicit course mappings."""
+    term = db.get(AcademicTerm, term_id)
+    if not term:
+        raise HTTPException(404, "Semester not found")
+    courses = {c.id: c for c in db.scalars(select(Course).where(Course.academic_term_id == term_id)).all()}
+    observations = db.scalars(select(AttendancePeriodObservation).where(
+        AttendancePeriodObservation.academic_term_id == term_id,
+    ).order_by(AttendancePeriodObservation.attendance_date, AttendancePeriodObservation.slot_start_time,
+               AttendancePeriodObservation.id)).all()
+    observations = latest_observations(observations)
+    return {"term_id": term_id, "coverage": "IMPORTED_OBSERVATIONS_ONLY", "periods": [
+        {"id": o.id, "date": o.attendance_date.isoformat(), "start": o.slot_start_time,
+         "end": o.slot_end_time, "period": o.source_period_identifier,
+         "course_code": courses[o.course_id].course_code if o.course_id in courses else None,
+         "course_name": courses[o.course_id].course_name if o.course_id in courses else o.source_course_label,
+         "status": o.status, "attended": o.attended_period_count, "delivered": o.delivered_period_count}
+        for o in observations
+    ]}
+
+
+@router.post("/api/v1/terms/{term_id}/attendance/month-preview", tags=["Analytics"])
+def preview_attendance_month(term_id: str, month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+                             db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Read one exact calendar month from the verified semester; never ingest it."""
+    term = db.get(AcademicTerm, term_id)
+    if not term:
+        raise HTTPException(404, "Semester not found")
+    verified = [t for t in HistoricalDiscoveryService(db).get_persisted_inventory().terms
+                if t.details.get("selector_verified") and t.academic_year == term.academic_year
+                and t.semester_number == term.semester_number]
+    if len(verified) != 1:
+        raise HTTPException(409, "Discover and verify this semester in Historical Attendance first.")
+    if month[:4] not in term.academic_year.split("-"):
+        raise HTTPException(422, "Month must be within this academic year.")
+    if not _SYNC_LOCK.acquire(blocking=False):
+        raise HTTPException(409, "The portal is busy. Wait for background discovery to finish.")
+    try:
+        scope = verified[0]
+        result = _live_portal_extractor.extract_live_day_wise(
+            academic_year=scope.academic_year, semester=scope.semester_number,
+            class_id=scope.class_identifier, month=month[5:], show_course_name=True,
+            from_date=month+"-01", to_date=f"{month}-{calendar.monthrange(int(month[:4]), int(month[5:]))[1]:02d}",
+        )
+        if any(o.attendance_date.isoformat()[:7] != month for o in result.batch.observations):
+            raise ValueError("MONTH_YEAR_MISMATCH")
+        courses = db.scalars(select(Course).where(Course.academic_term_id == term_id)).all()
+        def mapped_code(label: Optional[str]) -> Optional[str]:
+            if not label:
+                return None
+            key = " ".join(label.casefold().split())
+            matches = [c.course_code for c in courses if key in {
+                c.course_code.casefold(), " ".join(c.course_name.casefold().split()),
+            }]
+            return matches[0] if len(matches) == 1 else None
+        return {"term_id": term_id, "month": month, "persisted": False, "coverage": "LIVE_PREVIEW_ONLY", "periods": [
+            {"id": f"preview-{i}", "date": o.attendance_date.isoformat(), "start": o.slot_start_time,
+             "end": o.slot_end_time, "period": o.source_period_identifier,
+             "course_code": mapped_code(o.source_course_label), "course_name": o.source_course_label,
+             "status": o.status.value, "attended": o.attended_period_count, "delivered": o.delivered_period_count}
+            for i, o in enumerate(result.batch.observations)
+        ]}
+    except Exception:
+        raise HTTPException(409, "The portal month could not be verified. No records were imported.") from None
+    finally:
+        _SYNC_LOCK.release()

@@ -1,3 +1,4 @@
+import {standing} from "../standing";
 import React, { useState } from "react";
 import {
   CheckCircle,
@@ -12,24 +13,27 @@ import type { CourseRecord } from "../types/attendance";
 interface Props {
   courses: CourseRecord[];
   targetPercentage: number;
+  onOpenCourse?: (course: CourseRecord) => void;
   onSelectCourseForSimulation: (course: CourseRecord) => void;
 }
 
-type FilterType = "ALL" | "AT_RISK" | "SAFE" | "UNRECORDED" | "LAB" | "THEORY";
+type FilterType = "ALL" | "CAUTION" | "AT_RISK" | "SAFE" | "UNRECORDED" | "LAB" | "THEORY";
 
 export const AttendanceTable: React.FC<Props> = ({
   courses,
   targetPercentage,
   onSelectCourseForSimulation,
+  onOpenCourse,
 }) => {
   const [filter, setFilter] = useState<FilterType>("ALL");
   const [search, setSearch] = useState<string>("");
 
   const filteredCourses = courses.filter((c) => {
     // Filter by category
-    if (filter === "AT_RISK" && c.status !== "AT_RISK") return false;
-    if (filter === "SAFE" && c.status !== "SAFE") return false;
+    if (filter === "AT_RISK" && standing(c).status !== "AT_RISK") return false;
+    if (filter === "SAFE" && standing(c).status !== "SAFE") return false;
     if (filter === "UNRECORDED" && c.status !== "UNRECORDED") return false;
+    if (filter === "CAUTION" && standing(c).status !== "CAUTION") return false;
     if (filter === "LAB" && !c.is_lab) return false;
     if (filter === "THEORY" && c.is_lab) return false;
 
@@ -46,7 +50,7 @@ export const AttendanceTable: React.FC<Props> = ({
   });
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden shadow-sm">
+    <div className="course-table-panel bg-slate-900 border border-slate-800 rounded-lg overflow-hidden shadow-sm">
       {/* Controls Bar: Filter Tabs & Search */}
       <div className="p-4 border-b border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-850 bg-slate-800/40">
         {/* Filter Pills */}
@@ -54,14 +58,15 @@ export const AttendanceTable: React.FC<Props> = ({
           {(
             [
               { key: "ALL", label: `All (${courses.length})` },
+              { key: "CAUTION", label: `Caution (${courses.filter(c=>standing(c).status === "CAUTION").length})` },
               {
                 key: "AT_RISK",
-                label: `At Risk (${courses.filter((c) => c.status === "AT_RISK").length})`,
+                label: `At Risk (${courses.filter((c) => standing(c).status === "AT_RISK").length})`,
                 color: "text-rose-400 hover:bg-rose-950/40",
               },
               {
                 key: "SAFE",
-                label: `Safe (${courses.filter((c) => c.status === "SAFE").length})`,
+                label: `Safe (${courses.filter((c) => standing(c).status === "SAFE").length})`,
                 color: "text-emerald-400 hover:bg-emerald-950/40",
               },
               {
@@ -80,8 +85,9 @@ export const AttendanceTable: React.FC<Props> = ({
           ).map((item) => (
             <button
               key={item.key}
+              aria-pressed={filter === item.key}
               onClick={() => setFilter(item.key)}
-              className={`px-3 py-1.5 rounded-md font-medium transition-colors cursor-pointer ${
+              className={`px-3 py-1.5 rounded-md font-medium transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                 filter === item.key
                   ? "bg-slate-700 text-slate-100 shadow-sm"
                   : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
@@ -99,24 +105,25 @@ export const AttendanceTable: React.FC<Props> = ({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search code, course, or faculty..."
-            className="bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 w-full sm:w-64"
+            aria-label="Search courses"
+            className="bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus-visible:ring-2 focus-visible:ring-indigo-500 w-full sm:w-64"
           />
         </div>
       </div>
 
       {/* Table Element */}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs border-collapse">
+        <table className="data-table w-full text-left text-xs border-collapse">
           <thead>
             <tr className="border-b border-slate-800 bg-slate-800/60 text-slate-400 font-semibold uppercase tracking-wider">
-              <th className="py-3 px-4 w-28">Code</th>
-              <th className="py-3 px-4">Course Name &amp; Faculty</th>
-              <th className="py-3 px-3 text-center w-24">Type</th>
-              <th className="py-3 px-3 text-center w-16">Credit</th>
-              <th className="py-3 px-4 text-center w-28">Attended / Del</th>
-              <th className="py-3 px-4 w-44">Attendance %</th>
-              <th className="py-3 px-4 w-52">Action / Margin</th>
-              <th className="py-3 px-3 text-center w-20">Simulate</th>
+              <th scope="col" className="py-3 px-4 w-28">Code</th>
+              <th scope="col" className="py-3 px-4">Course Name &amp; Faculty</th>
+              <th scope="col" className="py-3 px-3 text-center w-24">Type</th>
+              <th scope="col" className="py-3 px-3 text-center w-16">Credit</th>
+              <th scope="col" className="py-3 px-4 text-center w-28">Attended / Del</th>
+              <th scope="col" className="py-3 px-4 w-44">Attendance %</th>
+              <th scope="col" className="py-3 px-4 w-52">Action / Margin</th>
+              <th scope="col" className="py-3 px-3 text-center w-20">Simulate</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/80">
@@ -128,8 +135,9 @@ export const AttendanceTable: React.FC<Props> = ({
               </tr>
             ) : (
               filteredCourses.map((c) => {
-                const isSafe = c.status === "SAFE";
-                const isRisk = c.status === "AT_RISK";
+                const isSafe = standing(c).status === "SAFE";
+                const isRisk = standing(c).status === "AT_RISK";
+                const isCaution = standing(c).status === "CAUTION";
                 const isUnrecorded = c.status === "UNRECORDED";
 
                 return (
@@ -150,7 +158,7 @@ export const AttendanceTable: React.FC<Props> = ({
                     {/* Course Name & Faculty */}
                     <td className="py-3 px-4 align-top">
                       <div className="font-medium text-slate-200 leading-snug">
-                        {c.name}
+                        <button className="text-left underline decoration-dotted underline-offset-4 hover:text-indigo-300" onClick={() => onOpenCourse?.(c)}>{c.name}</button>
                       </div>
                       <div className="text-slate-400 text-[11px] mt-0.5">
                         {c.faculty ? `Faculty: ${c.faculty}` : "Faculty unassigned"}
@@ -228,12 +236,13 @@ export const AttendanceTable: React.FC<Props> = ({
 
                     {/* Action / Margin Recommendation */}
                     <td className="py-3 px-4 align-top">
+                      {isCaution && <div className="text-amber-300 border border-amber-700 rounded px-2 py-1 text-xs">Caution · 0 {c.is_lab ? "lab sessions" : "bunks"} left</div>}
                       {isSafe && (
                         <div className="inline-flex items-center gap-1.5 text-emerald-400 bg-emerald-950/40 border border-emerald-800/80 px-2.5 py-1 rounded-md text-[11px] font-medium">
                           <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
                           <span>
                             {c.can_skip && c.can_skip > 0
-                              ? `Safe to miss ${c.can_skip} period${c.can_skip > 1 ? "s" : ""}`
+                              ? `Safe to miss ${standing(c).bunks} ${c.is_lab ? "lab sessions (2 periods each)" : "periods"}`
                               : "On border (0 bunks left)"}
                           </span>
                         </div>
@@ -243,7 +252,7 @@ export const AttendanceTable: React.FC<Props> = ({
                         <div className="inline-flex items-center gap-1.5 text-rose-400 bg-rose-950/40 border border-rose-800/80 px-2.5 py-1 rounded-md text-[11px] font-medium">
                           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
                           <span>
-                            Need {c.must_attend} consecutive period{c.must_attend && c.must_attend > 1 ? "s" : ""}
+                            Need {c.is_lab ? Math.ceil((c.must_attend ?? 0)/2) : c.must_attend} {c.is_lab ? "consecutive lab sessions (2 periods each)" : "consecutive periods"}
                           </span>
                         </div>
                       )}
@@ -281,3 +290,4 @@ export const AttendanceTable: React.FC<Props> = ({
     </div>
   );
 };
+

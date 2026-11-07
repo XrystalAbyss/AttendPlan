@@ -177,3 +177,70 @@ class TestDaywiseParsingAndIngestion:
         assert len(mapped) > 0
         for m in mapped:
             assert m.course_mapping_confidence >= 0.8
+
+    def test_structural_header_row_excluded_from_daywise_observations(self) -> None:
+        """Verify that rows containing 'Lecture Timings' or 'Total' headers are not treated as class slots."""
+        html = """
+        <table id="daywise_table">
+          <thead>
+            <tr>
+              <th>Time Slot</th>
+              <th>01/10/2026 (Thu)</th>
+              <th>05/10/2026 (Mon)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Lecture Timings</td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>08:10 - 09:00</td>
+              <td><span class="text-success">P</span><br><small>CSH301C</small></td>
+              <td><span class="text-danger">A</span><br><small>CSH302C</small></td>
+            </tr>
+            <tr>
+              <td>09:00 - 09:50</td>
+              <td></td>
+              <td><span class="text-success">P</span><br><small>CSH304C</small></td>
+            </tr>
+            <tr>
+              <td>Total Attendance</td>
+              <td>1/1</td>
+              <td>1/2</td>
+            </tr>
+          </tbody>
+        </table>
+        """
+        parser = ERPDaywiseParser()
+        batch = parser.parse_html(html)
+
+        # 2 dates x 2 valid time slots = 4 observations total (Lecture Timings & Total rows excluded)
+        assert len(batch.observations) == 4
+        slots = {o.source_period_identifier for o in batch.observations}
+        assert "Lecture Timings" not in slots
+        assert "Total Attendance" not in slots
+        assert slots == {"08:10 - 09:00", "09:00 - 09:50"}
+
+        # Check counts
+        delivered = sum(o.delivered_period_count for o in batch.observations)
+        attended = sum(o.attended_period_count for o in batch.observations)
+        blank = sum(1 for o in batch.observations if o.status == PeriodStatus.NOT_REPORTED)
+
+        assert delivered == 3
+        assert attended == 2
+        assert blank == 1
+
+
+def test_connected_lab_cell_counts_two_without_doubling_separate_periods():
+    from bs4 import BeautifulSoup
+    from datetime import date
+    from app.adapters.daywise_parser import ERPDaywiseParser
+    parser=ERPDaywiseParser()
+    merged=BeautifulSoup('<td rowspan="2"><div>TEST101 LAB</div>P</td>',"html.parser").td
+    present=parser._parse_cell(merged,date(2026,9,1),"09:00","09:50","1")
+    assert present.attended_period_count==2 and present.delivered_period_count==2
+    separate=BeautifulSoup('<td><div>TEST101 LAB</div>A</td>',"html.parser").td
+    absent=parser._parse_cell(separate,date(2026,9,1),"09:00","09:50","1")
+    assert absent.delivered_period_count==1 and absent.attended_period_count==0

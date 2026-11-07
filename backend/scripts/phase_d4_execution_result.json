@@ -1,0 +1,230 @@
+{
+  "execution_timestamp": "2026-11-01T07:30:41Z",
+  "semesters": {
+    "2025-2026_s3_1067": {
+      "academic_year": "2025-2026",
+      "semester": 3,
+      "class_id": "1067",
+      "class_label": "B.Tech CSE AIML-Sem 3",
+      "summary": {
+        "outcome": "EXISTING_VERIFIED_REUSED",
+        "term_id": "056b0ab4-e221-43f5-8f57-c2231ded193b",
+        "snapshot_id": "b048b922-26aa-46ae-be62-d01d02145b1c",
+        "courses_count": 16,
+        "attended": 400,
+        "delivered": 463,
+        "percentage": 86.39
+      },
+      "months": [
+        {
+          "month": "2025-08",
+          "job_id": "03d9065a-56f7-4077-b875-f07548ce3028",
+          "outcome": "DUPLICATE_SKIPPED",
+          "observations_extracted": 200,
+          "attended": 122,
+          "delivered": 130,
+          "dates_count": 20,
+          "batch_id": "fc6ebf62-c1e9-495c-a1e3-b95283602748",
+          "checksum": "5834f60b58f5e2c183ee261853d1e12deedcecac055d9eb769a9468f884d21da"
+        },
+        {
+          "month": "2025-09",
+          "batch_id": "67cfc134-da09-45e1-9a38-0850c990df16",
+          "outcome": "EXISTING_VERIFIED_REUSED",
+          "checksum": "e0e0b4b207038c43f6a9efd1afd82c753f04be3f532809d122329f7f9de3b468",
+          "observations_extracted": 170,
+          "attended": 93,
+          "delivered": 119,
+          "dates_count": 17
+        },
+        {
+          "month": "2025-10",
+          "job_id": "a53048c6-2609-473c-ba68-2b123ea87286",
+          "outcome": "DUPLICATE_SKIPPED",
+          "observations_extracted": 160,
+          "attended": 82,
+          "delivered": 96,
+          "dates_count": 16,
+          "batch_id": "0e8d51e8-566e-47c7-be9e-38efd2453462",
+          "checksum": "f81a83fd4ccb5a4282ec0f5639f57b3519c10e9e85f14ec0752e52dbd8d5bf33"
+        },
+        {
+          "month": "2025-11",
+          "job_id": "3bd35611-4586-4d59-93c6-9a0648b534f7",
+          "outcome": "DUPLICATE_SKIPPED",
+          "observations_extracted": 150,
+          "attended": 76,
+          "delivered": 91,
+          "dates_count": 15,
+          "batch_id": "b84e71a2-0711-44ff-be6b-33229ff95eac",
+          "checksum": "441799ad79a5cdc48798dd02c32030cbe0d67c75936deaab8806817a12c7674e"
+        }
+      ],
+      "reconciliation": {
+        "status": "SCOPE_MISMATCH",
+        "status_explanation": "Scope non-comparability detected: Day-wise coverage (2025-08-01 to 2025-11-21) represents a partial subset of subject-wise reporting window (2025-07-14 to 2025-11-22). Totals are not directly comparable; this reflects partial date window extraction rather than a data integrity discrepancy.",
+        "subject_total_attended": 400,
+        "subject_total_delivered": 463,
+        "daywise_total_attended": 373,
+        "daywise_total_delivered": 436,
+        "courses_count": 16,
+        "unmapped_observations": 0
+      },
+      "status": "COMPLETED"
+    },
+    "2024-2025_s2_1048": {
+      "academic_year": "2024-2025",
+      "semester": 2,
+      "class_id": "1048",
+      "class_label": "B.Tech CSE AIML-Sem 2",
+      "summary": {
+        "outcome": "SAVED_VERIFIED",
+        "term_id": "43c15e7f-18b3-4436-8945-f3f4c2a046bd",
+        "snapshot_id": "37411965-aa93-453d-90c7-18ac78d00fcf",
+        "courses_count": 16,
+        "attended": 381,
+        "delivered": 446,
+        "percentage": 85.43
+      },
+      "months": [
+        {
+          "month": "2025-01",
+          "job_id": "bc7a4969-4300-47c6-b39d-5069199149a3",
+          "outcome": "PORTAL_SAFETY_FILTER_SELECTION_MISMATCH",
+          "observations_extracted": 0,
+          "attended": 0,
+          "delivered": 0,
+          "dates_count": 0
+        },
+        {
+          "month": "2025-02",
+          "job_id": "81039793-c535-424a-a210-ac68f0aaa6ee",
+          "outcome": "SAVED_VERIFIED",
+          "observations_extracted": 152,
+          "attended": 102,
+          "delivered": 118,
+          "dates_count": 19,
+          "batch_id": "7a601c6e-9ce7-4079-b7c6-3fc923fdd083",
+          "checksum": "73d20265a951e8997e6bc28170d6133d269f6251014892ab97684149e3683d5d"
+        },
+        {
+          "month": "2025-03",
+          "job_id": "8633bf6d-8b08-4fe0-9aee-7cfab13f2761",
+          "outcome": "SAVED_VERIFIED",
+          "observations_extracted": 88,
+          "attended": 71,
+          "delivered": 73,
+          "dates_count": 11,
+          "batch_id": "d5b4bc0d-5546-45bf-b225-6a79daf98855",
+          "checksum": "869b7be60aebdc9493eab8fc98417d99fca56b2ebff3f50a2e4284716f2a12fa"
+        },
+        {
+          "month": "2025-04",
+          "job_id": "81937d77-62e9-455e-9e61-fc8fe61b4db7",
+          "outcome": "SAVED_VERIFIED",
+          "observations_extracted": 176,
+          "attended": 112,
+          "delivered": 153,
+          "dates_count": 22,
+          "batch_id": "4a5b3e92-0552-44e6-b2bc-aff611f07009",
+          "checksum": "f1c29333797c2d97a1816918880ae1cfd4dc77a1d820534ba4f328f34da09e0e"
+        },
+        {
+          "month": "2025-05",
+          "job_id": "8e8efadb-13a1-4323-b7b7-c038f82cdb14",
+          "outcome": "SAVED_VERIFIED",
+          "observations_extracted": 14,
+          "attended": 11,
+          "delivered": 12,
+          "dates_count": 2,
+          "batch_id": "82d14446-2386-449b-9312-558617eed8ee",
+          "checksum": "17243438fdb3f2de6930130fc9a984112ca2893be2724a844498efbd06b0e1c5"
+        }
+      ],
+      "reconciliation": {
+        "status": "SCOPE_MISMATCH",
+        "status_explanation": "Scope non-comparability detected: Day-wise coverage (2025-02-01 to 2025-05-02) represents a partial subset of subject-wise reporting window (2025-01-13 to 2025-05-02). Totals are not directly comparable; this reflects partial date window extraction rather than a data integrity discrepancy.",
+        "subject_total_attended": 381,
+        "subject_total_delivered": 446,
+        "daywise_total_attended": 296,
+        "daywise_total_delivered": 356,
+        "courses_count": 16,
+        "unmapped_observations": 0
+      },
+      "status": "COMPLETED"
+    },
+    "2024-2025_s1_918": {
+      "academic_year": "2024-2025",
+      "semester": 1,
+      "class_id": "918",
+      "class_label": "B.Tech CSE AIML-Sem 1",
+      "summary": {
+        "outcome": "SAVED_VERIFIED",
+        "term_id": "9ec8c9a0-38c3-47a5-922c-035078d9ef4e",
+        "snapshot_id": "fbfd7b77-def8-43d3-90a3-515df662670e",
+        "courses_count": 12,
+        "attended": 275,
+        "delivered": 293,
+        "percentage": 93.86
+      },
+      "months": [
+        {
+          "month": "2024-08",
+          "job_id": "79551cf4-68f1-44c2-a199-a17a8edaf812",
+          "outcome": "SAVED_VERIFIED",
+          "observations_extracted": 98,
+          "attended": 62,
+          "delivered": 64,
+          "dates_count": 14,
+          "batch_id": "d90a4d65-5c09-45cf-8d70-2121fc10e062",
+          "checksum": "fa24ac8694de4f194a8e3bbb4cb2812c0117e0451d5e84fb8cd991ff2f8caf34"
+        },
+        {
+          "month": "2024-09",
+          "job_id": "f9a9d1ee-10ca-4d85-a631-10dcd14e7fab",
+          "outcome": "SAVED_VERIFIED",
+          "observations_extracted": 105,
+          "attended": 74,
+          "delivered": 78,
+          "dates_count": 15,
+          "batch_id": "5f3df555-0729-46e2-b5e6-1f829b3271d9",
+          "checksum": "5ae692dd3c682440d196582ae86328626811a6d877865b374349fef2fedcbf15"
+        },
+        {
+          "month": "2024-10",
+          "job_id": "2b8c85cb-0659-4c2f-9f6d-778b8bc97d4e",
+          "outcome": "SAVED_VERIFIED",
+          "observations_extracted": 112,
+          "attended": 79,
+          "delivered": 81,
+          "dates_count": 16,
+          "batch_id": "e5bcd00b-cdeb-4efa-b9d8-7dc7f0ae74f3",
+          "checksum": "43cf0660e6c2270d8b672febf08c79cace8ae842ec73522893569722824991a0"
+        },
+        {
+          "month": "2024-11",
+          "job_id": "656af77a-12cd-4605-bda7-d0d3a53b8a2f",
+          "outcome": "SAVED_VERIFIED",
+          "observations_extracted": 98,
+          "attended": 60,
+          "delivered": 70,
+          "dates_count": 14,
+          "batch_id": "7fb28ebb-6951-4ad4-8e89-ac9d97c4c019",
+          "checksum": "093f177509f971333cf24af2593920afda7024d307b99b1f381ef75fae2e9a1e"
+        }
+      ],
+      "reconciliation": {
+        "status": "SCOPE_MISMATCH",
+        "status_explanation": "Scope non-comparability detected: Day-wise coverage (2024-08-08 to 2024-11-22) represents a partial subset of subject-wise reporting window (2024-07-01 to 2024-12-31). Totals are not directly comparable; this reflects partial date window extraction rather than a data integrity discrepancy.",
+        "subject_total_attended": 275,
+        "subject_total_delivered": 293,
+        "daywise_total_attended": 275,
+        "daywise_total_delivered": 293,
+        "courses_count": 12,
+        "unmapped_observations": 0
+      },
+      "status": "COMPLETED"
+    }
+  },
+  "global_status": "SUCCESS"
+}

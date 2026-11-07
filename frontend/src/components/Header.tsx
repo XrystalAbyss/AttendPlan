@@ -1,14 +1,17 @@
 import React from "react";
-import { GraduationCap, Sliders, ShieldCheck } from "lucide-react";
+import {ThemeSwitch} from "./ThemeSwitch";
+import { GraduationCap, Sliders, ShieldCheck, KeyRound } from "lucide-react";
 
 interface Props {
   academicYear: string;
-  semester: number;
+  semester: number | null;
   className: string;
   targetPercentage: number;
   onTargetChange: (target: number) => void;
   isBackendHealthy: boolean;
+  onOpenAuthModal?: () => void;
 }
+
 
 export const Header: React.FC<Props> = ({
   academicYear,
@@ -17,9 +20,11 @@ export const Header: React.FC<Props> = ({
   targetPercentage,
   onTargetChange,
   isBackendHealthy,
+  onOpenAuthModal,
 }) => {
+
   return (
-    <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur-sm px-6 py-4">
+    <header className="app-header border-b border-slate-800 bg-slate-900/90 px-6 py-4">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
         {/* Branding & Institutional Context */}
         <div className="flex items-center gap-3">
@@ -32,28 +37,30 @@ export const Header: React.FC<Props> = ({
                 AttendPlan
               </h1>
               <span className="text-xs px-2 py-0.5 rounded font-mono bg-slate-800 text-slate-400 border border-slate-700">
-                v0.1.0-F0
+                Local dashboard
               </span>
             </div>
             <p className="text-xs text-slate-400 m-0 mt-0.5">
-              Local University Attendance Intelligence &bull; iCloudEMS Analyzer
+              Attendance &amp; academic insights
             </p>
           </div>
         </div>
 
         {/* Academic Meta & Controls */}
         <div className="flex flex-wrap items-center gap-4 text-xs">
-          <div className="bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-md flex items-center gap-2 text-slate-300">
+          <div className="header-session bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-md flex items-center gap-2 text-slate-300">
             <span className="text-slate-400 font-medium">Session:</span>
             <span className="font-semibold text-slate-200">{academicYear}</span>
             <span className="text-slate-600">&bull;</span>
             <span className="text-slate-400 font-medium">Sem:</span>
-            <span className="font-semibold text-slate-200">{semester}</span>
+            <span className="font-semibold text-slate-200">{semester ?? "—"}</span>
             <span className="text-slate-600">&bull;</span>
             <span className="font-medium text-slate-300 truncate max-w-[160px]" title={className}>
               {className}
             </span>
           </div>
+
+          <ThemeSwitch />
 
           {/* Target Threshold Selector */}
           <div className="flex items-center gap-2 bg-slate-800/80 border border-slate-700 px-3 py-1 rounded-md">
@@ -66,23 +73,35 @@ export const Header: React.FC<Props> = ({
               value={targetPercentage}
               onChange={(e) => onTargetChange(Number(e.target.value))}
               aria-label="Target Attendance Threshold"
-              className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 font-mono font-medium focus:outline-none focus:border-indigo-500 cursor-pointer"
+              className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 font-mono font-medium focus:outline-none focus:border-indigo-500 focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
             >
-              <option value={70}>70%</option>
-              <option value={75}>75% (Standard)</option>
+              <option value={75}>75%</option>
               <option value={80}>80%</option>
               <option value={85}>85%</option>
             </select>
           </div>
 
+          {/* Authentication & Identity Vault */}
+          {onOpenAuthModal && (
+            <button
+              onClick={onOpenAuthModal}
+              className="flex items-center gap-1.5 text-xs text-indigo-300 hover:text-white bg-indigo-950/40 hover:bg-indigo-900/50 border border-indigo-700/50 px-2.5 py-1 rounded-md transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              title="Configure Student Mobile Identity and Windows TOTP Vault"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Auth &amp; Vault</span>
+            </button>
+          )}
+
           {/* Backend Status */}
+
           <div className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-800/50 border border-slate-700/60 px-2.5 py-1 rounded-md">
             <ShieldCheck
               className={`w-3.5 h-3.5 ${
                 isBackendHealthy ? "text-emerald-400" : "text-rose-400"
               }`}
             />
-            <span>{isBackendHealthy ? "API 127.0.0.1:8000" : "API Offline"}</span>
+            <span>{isBackendHealthy ? "Connected" : "Offline"}</span>
           </div>
         </div>
       </div>

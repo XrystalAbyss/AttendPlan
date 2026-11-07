@@ -1,0 +1,32 @@
+/* The existing slate utilities consume these shared tokens, so every view and
+   modal uses the same warm theme rather than an isolated theme on one screen. */
+html[data-theme="sepia-dark"] {
+  --color-slate-50:#fff8ed; --color-slate-100:#f5ead7; --color-slate-200:#e5d6bd;
+  --color-slate-300:#d1bfa4; --color-slate-400:#af9b80; --color-slate-500:#927e63;
+  --color-slate-600:#715e48; --color-slate-700:#504232; --color-slate-800:#392f25;
+  --color-slate-850:#2e261e; --color-slate-900:#251f19; --color-slate-950:#17130f;
+  --bg-page:#17130f; --bg-card:#251f19; --border-card:#504232;
+  --text-primary:#f5ead7; --text-muted:#af9b80;
+}
+html[data-theme="sepia-light"] {
+  --color-slate-950:#f5eddd; --color-slate-900:#fff9ee; --color-slate-850:#eee3ce;
+  --color-slate-800:#e7dcc7; --color-slate-700:#cdbb9a; --color-slate-600:#af9470;
+  --color-slate-500:#856844; --color-slate-400:#735a3d; --color-slate-300:#5f4931;
+  --color-slate-200:#4b3826; --color-slate-100:#342518; --color-slate-50:#21170f;
+  --bg-page:#f5eddd; --bg-card:#fff9ee; --border-card:#cdbb9a;
+  --text-primary:#342518; --text-muted:#735a3d;
+  --color-indigo-100:#442b71; --color-indigo-200:#573986; --color-indigo-300:#6343a1;
+  --color-indigo-400:#5740a0; --color-indigo-600:#5c45a0; --color-indigo-900:#e6d9f2; --color-indigo-950:#eee6f6;
+  --color-amber-100:#613f0d; --color-amber-200:#74490a; --color-amber-300:#855713; --color-amber-400:#906012;
+  --color-amber-900:#f0deb9; --color-amber-950:#f8e8c9;
+  --color-emerald-100:#174b37; --color-emerald-200:#1c4f3c; --color-emerald-300:#146147; --color-emerald-400:#1a765a;
+  --color-emerald-900:#d5e5d8; --color-emerald-950:#e1eddf;
+  --color-rose-100:#6e2734; --color-rose-200:#803343; --color-rose-300:#8f3449; --color-rose-400:#a13c51;
+  --color-rose-900:#efd4cd; --color-rose-950:#f6e0d6;
+}
+html[data-theme="sepia-light"] h1.text-white,
+html[data-theme="sepia-light"] h2.text-white,
+html[data-theme="sepia-light"] h3.text-white {color:var(--text-primary)}
+button, a, select, input { -webkit-tap-highlight-color:transparent; }
+:focus-visible {outline:2px solid var(--color-indigo-400);outline-offset:3px}
+/* Theme changes are immediate; no contrasting intermediate transition frames. */

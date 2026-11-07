@@ -121,3 +121,55 @@ type ReconciliationStatus =
   "evidence": { "filter_count": 3 }
 }
 ```
+
+---
+
+## 3. F2-B Live Synchronization Contracts
+
+### 3.1 Sync Job Response (`SyncJobResponse`)
+```json
+{
+  "id": "job_01JAD4K6S...",
+  "academic_term_id": "term_2025_2026_5_2582",
+  "source_scope": "CURRENT_SEMESTER_PILOT",
+  "state": "COMPLETED",
+  "current_step": "Completed pilot synchronization",
+  "start_timestamp": "2026-10-19T21:00:00Z",
+  "completion_timestamp": "2026-10-19T21:00:15Z",
+  "completed_batches": 4,
+  "failed_batches": 0,
+  "progress_total": 4,
+  "progress_current": 4,
+  "safe_diagnostic_message": "Snapshot and day-wise batch persisted successfully.",
+  "details": {
+    "snapshot_id": "snap_...",
+    "batch_id": "batch_...",
+    "reconciliation_status": "MATCHED"
+  }
+}
+```
+
+### 3.2 Historical Plan Response (`HistoricalPlanResponse`)
+```json
+{
+  "discovered_academic_years": ["2025-2026", "2024-2025"],
+  "terms": [
+    {
+      "academic_year": "2025-2026",
+      "semester": 5,
+      "class_identifier": "2582",
+      "candidate_months": ["08", "09", "10", "11", "12"],
+      "candidate_month_labels": ["August", "September", "October", "November", "December"],
+      "estimated_requests": 6,
+      "has_subject_snapshot": true,
+      "has_daywise_batches": true,
+      "existing_batches_count": 1,
+      "selected": true
+    }
+  ],
+  "total_terms_count": 1,
+  "total_estimated_requests": 6,
+  "pacing_guidance": "Sequential execution with 1500ms delay between requests."
+}
+```
+

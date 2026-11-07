@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>iCloudEMS - Subject Wise Attendance - Semester 2 (SYNTHETIC FIXTURE)</title>
+  <!-- SYNTHETIC TEST FIXTURE: Zero student PII. Semester 2 (2024-2025). -->
+</head>
+<body>
+  <div class="card-body">
+    <form action="/corecampus/student/attendance/subwise_attendace_new.php" method="post">
+      <select name="acadyear" id="acadyear"><option value="2024-2025" selected>2024-2025</option></select>
+      <select name="semNum" id="semNum"><option value="2" selected>2</option></select>
+      <select name="classid" id="classid"><option value="1410" selected>B.Tech CSE AIML-Sem 2</option></select>
+      <input type="text" name="from_date" value="01/01/2025">
+      <input type="text" name="to_date" value="31/05/2025">
+    </form>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h6 class="box-title mb-3">Course Wise Attendance From <b>01/01/2025</b> to <b>31/05/2025.</b></h6>
+      <table class="table table-bordered">
+        <thead>
+          <tr>
+            <th>Sr.No</th>
+            <th>Course Name</th>
+            <th>Course Short Name</th>
+            <th>Course Code</th>
+            <th>Faculty Name</th>
+            <th>Course Credit</th>
+            <th>Attended/Delivered</th>
+            <th>Percent</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>PROGRAMMING FOR PROBLEM SOLVING</td>
+            <td>PPS</td>
+            <td>CSH101C</td>
+            <td>Dr. P. Sen</td>
+            <td>4.0</td>
+            <td>34/38</td>
+            <td>89.47</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>CALCULUS & DIFFERENTIAL EQUATIONS</td>
+            <td>MATH</td>
+            <td>MATH101</td>
+            <td>Dr. K. Patel</td>
+            <td>4.0</td>
+            <td>28/34</td>
+            <td>82.35</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>ENGINEERING PHYSICS</td>
+            <td>PHY</td>
+            <td>PHY101</td>
+            <td>Dr. J. Roy</td>
+            <td>3.0</td>
+            <td>25/30</td>
+            <td>83.33</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>

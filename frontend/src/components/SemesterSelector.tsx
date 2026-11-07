@@ -20,7 +20,7 @@ export const SemesterSelector: React.FC<SemesterSelectorProps> = ({
   const selectedTerm = terms.find((t) => t.id === selectedTermId) ?? terms[0];
 
   return (
-    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-900/80 border border-slate-800 p-3.5 rounded-lg">
+    <div className="semester-selector flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-900/80 border border-slate-800 p-3.5 rounded-lg">
       <div className="flex items-center gap-3">
         <div className="p-2 bg-indigo-950/60 border border-indigo-800/60 rounded-md text-indigo-400">
           <Calendar className="w-5 h-5" />
@@ -42,7 +42,7 @@ export const SemesterSelector: React.FC<SemesterSelectorProps> = ({
         </div>
       </div>
 
-      <div className="flex items-center gap-3 w-full sm:w-auto">
+      <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto min-w-0">
         {selectedTerm.overall_percentage !== null ? (
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-xs">
             {selectedTerm.overall_status === "SAFE" ? (
@@ -69,11 +69,12 @@ export const SemesterSelector: React.FC<SemesterSelectorProps> = ({
           </div>
         )}
 
-        <div className="relative">
+        <div className="relative max-w-full">
           <select
+            aria-label="Saved semester"
             value={selectedTerm.id}
             onChange={(e) => onSelectTerm(e.target.value)}
-            className="appearance-none bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-medium py-1.5 pl-3 pr-8 rounded border border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+            className="max-w-full appearance-none bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-medium py-1.5 pl-3 pr-8 rounded border border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
           >
             {terms.map((t) => (
               <option key={t.id} value={t.id}>

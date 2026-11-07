@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any, Generator
 
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models import Base
@@ -72,10 +72,48 @@ default_engine = create_app_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=default_engine)
 
 
+HEAD_REQUIRED_TABLES = {
+    "academic_terms",
+    "courses",
+    "attendance_snapshots",
+    "attendance_snapshot_rows",
+    "attendance_observation_batches",
+    "attendance_period_observations",
+    "ingestion_events",
+    "sync_jobs",
+    "performance_snapshots",
+    "official_result_snapshots",
+    "official_course_result_rows",
+}
+
+
 def init_db(engine: Engine | None = None) -> None:
-    """Create all tables defined in metadata."""
+    """Create all tables defined in metadata and ensure alembic version is stamped only if schema is complete."""
     eng = engine or default_engine
     Base.metadata.create_all(bind=eng)
+    try:
+        from sqlalchemy import inspect
+        with eng.connect() as conn:
+            conn.execute(
+                text(
+                    "CREATE TABLE IF NOT EXISTS alembic_version ("
+                    "version_num VARCHAR(32) NOT NULL, "
+                    "CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)"
+                    ")"
+                )
+            )
+            res = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
+            if not res:
+                # Strictly verify that ALL head-required tables exist before stamping
+                inspector = inspect(conn)
+                existing_tables = set(inspector.get_table_names())
+                if HEAD_REQUIRED_TABLES.issubset(existing_tables):
+                    conn.execute(
+                        text("INSERT INTO alembic_version (version_num) VALUES ('f2e2_official_results')")
+                    )
+            conn.commit()
+    except Exception:
+        pass
 
 
 # Ensure tables exist for default engine

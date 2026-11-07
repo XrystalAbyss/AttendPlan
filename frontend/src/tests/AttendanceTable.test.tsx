@@ -82,8 +82,8 @@ describe("AttendanceTable Component", () => {
     // CSH302C (19/19): safe to miss 6
     expect(screen.getByText(/Safe to miss 6 periods/i)).toBeInTheDocument();
 
-    // CSH311C (10/14): need 2 consecutive
-    expect(screen.getByText(/Need 2 consecutive periods/i)).toBeInTheDocument();
+    // CSH311C (10/14): two periods are one complete lab session
+    expect(screen.getByText(/Need 1 consecutive lab sessions \(2 periods each\)/i)).toBeInTheDocument();
 
     // RDO202C (0/0): pending
     expect(screen.getByText(/Pending \(0 delivered\)/i)).toBeInTheDocument();
@@ -124,3 +124,4 @@ describe("AttendanceTable Component", () => {
     expect(screen.getAllByText("Theory").length).toBeGreaterThan(0);
   });
 });
+

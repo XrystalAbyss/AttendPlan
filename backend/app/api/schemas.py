@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.db.enums import IngestionOutcome, ReconciliationStatus
 from app.domain.models import CourseRecord, CourseStatus, SnapshotSummary
@@ -252,3 +252,268 @@ class OverallDiscoveryResponse(BaseModel):
     displayed_columns: list[str]
     macro_attendance_percentage: Optional[float] = None
     evidence: dict[str, Any]
+
+
+# -------------------------------------------------------------
+# F2-B Synchronization Schemas & Job State Machine
+# -------------------------------------------------------------
+
+class SyncJobResponse(BaseModel):
+    id: str
+    academic_term_id: Optional[str] = None
+    source_scope: str
+    state: str
+    current_step: str
+    start_timestamp: datetime
+    completion_timestamp: Optional[datetime] = None
+    completed_batches: int
+    failed_batches: int
+    progress_total: int
+    progress_current: int
+    safe_diagnostic_message: Optional[str] = None
+    details: Optional[dict[str, Any]] = None
+
+
+class SyncSubjectWiseRequest(BaseModel):
+    academic_year: Optional[str] = None
+    semester: Optional[int] = None
+    class_id: Optional[str] = None
+    persist: bool = True
+
+
+class SyncSubjectWiseResponse(BaseModel):
+    status: str
+    snapshot_id: Optional[str] = None
+    term_id: Optional[str] = None
+    outcome: str
+    record_count: int
+    academic_year: str
+    semester: int
+    class_name: Optional[str] = None
+    aggregate_percentage: Optional[float] = None
+    validation: dict[str, Any]
+
+
+class SyncDayWiseRequest(BaseModel):
+    academic_year: Optional[str] = None
+    semester: Optional[int] = None
+    class_id: Optional[str] = None
+    month: Optional[str] = None
+    from_date: Optional[str] = None
+    to_date: Optional[str] = None
+    show_course_name: bool = True
+    persist: bool = True
+
+
+class SyncDayWiseResponse(BaseModel):
+    status: str
+    batch_id: Optional[str] = None
+    term_id: Optional[str] = None
+    outcome: str
+    coverage_start: date
+    coverage_end: date
+    total_observations: int
+    total_present: int
+    total_delivered: int
+    unmapped_count: int
+    validation: dict[str, Any]
+
+
+class PilotSyncRequest(BaseModel):
+    month: Optional[str] = None
+    academic_year: Optional[str] = None
+    semester: Optional[int] = None
+    class_id: Optional[str] = None
+
+
+class TermSyncScopeItem(BaseModel):
+    academic_year: str
+    semester: int
+    class_identifier: Optional[str] = None
+    candidate_months: list[str]
+    candidate_month_labels: list[str]
+    estimated_requests: int
+    has_subject_snapshot: bool
+    has_daywise_batches: bool
+    existing_batches_count: int
+    selected: bool
+
+
+class HistoricalPlanResponse(BaseModel):
+    discovered_academic_years: list[str]
+    terms: list[TermSyncScopeItem]
+    total_terms_count: int
+    total_estimated_requests: int
+    pacing_guidance: str
+
+
+# -------------------------------------------------------------
+# F2-C: TOTP Vault and Automated MFA Schemas
+# -------------------------------------------------------------
+
+class TotpCandidateResponse(BaseModel):
+    candidate_id: str
+    issuer: str
+    masked_account: str
+    digits: int = 6
+    period: int = 30
+    algorithm: str = "SHA1"
+    source_type: str = "STANDARD_TOTP"
+
+
+class TotpInspectResponse(BaseModel):
+    candidates: list[TotpCandidateResponse]
+    total_found: int
+    source_format: str
+
+
+class TotpEnrollRequest(BaseModel):
+    candidate_id: Optional[str] = None
+    secret_base32: Optional[str] = None
+    provisioning_input: Optional[str] = None
+    issuer: Optional[str] = None
+    account_label: Optional[str] = None
+    auto_autofill_enabled: bool = False
+    auto_submit_enabled: bool = False
+
+
+
+class TotpVerifyRequest(BaseModel):
+    code: str
+
+
+class TotpVerifyResponse(BaseModel):
+    valid: bool
+    message: str
+
+
+class TotpSettingsUpdateRequest(BaseModel):
+    auto_autofill_enabled: Optional[bool] = None
+    auto_submit_enabled: Optional[bool] = None
+
+
+class TotpMfaAutofillRequest(BaseModel):
+    force_submit: Optional[bool] = None
+
+
+class TotpMfaAutofillResponse(BaseModel):
+    success: bool
+    submitted: bool
+    redirected: bool
+    message: str
+    error: Optional[str] = None
+
+
+# -------------------------------------------------------------
+# F2-C Addendum: Persistent Identity & Login Orchestration
+# -------------------------------------------------------------
+
+
+
+class LoginOrchestrateRequest(BaseModel):
+    force_submit: Optional[bool] = None
+
+
+class LoginOrchestrationResponse(BaseModel):
+    state: str
+    step: str
+    success: bool
+    redirected: bool
+    message: str
+    current_url: Optional[str] = None
+    has_saved_mobile: bool = False
+    is_totp_enrolled: bool = False
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+# -------------------------------------------------------------
+# F2-E: Multi-Semester Historical Discovery & Backfill Schemas
+# -------------------------------------------------------------
+
+
+class HistoricalTermItemResponse(BaseModel):
+    term_key: str
+    academic_year: str
+    semester_number: int
+    class_identifier: Optional[str] = None
+    display_label: str
+    class_display_label: Optional[str] = None
+    status: str
+    has_subject_summary: bool = False
+    has_daywise_data: bool = False
+    existing_courses_count: int = 0
+    existing_observations_count: int = 0
+    attended_sum: int = 0
+    delivered_sum: int = 0
+    percentage: Optional[float] = None
+    discovered_at: Optional[datetime] = None
+    last_sync_timestamp: Optional[datetime] = None
+    candidate_months: list[str] = Field(default_factory=list)
+    candidate_month_labels: list[str] = Field(default_factory=list)
+    estimated_requests: int = 1
+    coverage_state: str
+    reconciliation_verdict: str
+    error_message: Optional[str] = None
+
+
+class HistoricalDiscoveryResponse(BaseModel):
+    terms: list[HistoricalTermItemResponse]
+    discovered_years: list[str]
+    total_terms_count: int
+    available_terms_count: int
+    imported_terms_count: int
+    discovery_timestamp: datetime
+    provenance: str
+
+
+class HistoricalDiscoverRequest(BaseModel):
+    html_content: Optional[str] = None
+
+
+class HistoricalPreviewRequest(BaseModel):
+    selected_term_keys: Optional[list[str]] = None
+
+
+class HistoricalPreviewResponse(BaseModel):
+    source_course_count: Optional[int] = None
+    approval_id: Optional[str] = None
+    selected_terms: list[HistoricalTermItemResponse]
+    total_selected_terms: int
+    total_estimated_requests: int
+    estimated_pacing_seconds: float
+    pacing_guidance: str
+    requires_user_approval: bool = True
+
+
+class HistoricalImportRequest(BaseModel):
+    approval_id: Optional[str] = None
+    selected_term_keys: list[str]
+    import_daywise: bool = False
+    max_months_per_term: Optional[int] = None
+
+
+class TermCoverageResponse(BaseModel):
+    term_id: str
+    academic_year: str
+    semester_number: int
+    class_identifier: Optional[str] = None
+    coverage_state: str
+    has_subject_summary: bool
+    subject_snapshot_count: int
+    subject_courses_count: int
+    candidate_months: list[str]
+    candidate_month_labels: list[str]
+    months_attempted: list[str]
+    months_completed: list[str]
+    unique_instructional_dates: int
+    unique_instructional_periods: int
+    mapped_periods: int
+    unmapped_periods: int
+    missing_or_unreported_periods: int
+    source_errors_count: int
+    reconciliation_verdict: str
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+
+

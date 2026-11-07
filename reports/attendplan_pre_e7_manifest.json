@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-11-02T02:02:15.901457",
+  "database_path": "C:\\Users\\astra\\AppData\\Local\\AttendPlan\\attendplan.sqlite3",
+  "backup_path": "C:\\Users\\astra\\AppData\\Local\\AttendPlan\\backups\\attendplan_pre_phase_e7_backup_20261102_020215.sqlite3",
+  "alembic_version": "f2e1_performance",
+  "academic_terms_count": 5,
+  "total_catalog_courses": 76,
+  "attendance_snapshots_count": 9,
+  "observation_batches_count": 28,
+  "period_observations_count": 3520,
+  "performance_snapshots_count": 5,
+  "performance_courses_count": 55,
+  "performance_assessment_cells": 468,
+  "status_distribution": {
+    "REPORTED": 238,
+    "UNREPORTED": 215,
+    "MASKED_BY_PORTAL": 15
+  },
+  "sync_jobs_count": 94
+}

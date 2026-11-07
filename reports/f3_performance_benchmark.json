@@ -1,0 +1,69 @@
+{
+  "timestamp": "2026-11-07T11:52:49Z",
+  "phase": "F.3",
+  "api_latencies": {
+    "GET /api/v1/terms": {
+      "samples": 15,
+      "median_ms": 28.68,
+      "min_ms": 8.65,
+      "max_ms": 31.72,
+      "avg_ms": 21.98
+    },
+    "GET /api/v1/terms/{id}/attendance": {
+      "samples": 15,
+      "median_ms": 15.17,
+      "min_ms": 4.09,
+      "max_ms": 29.94,
+      "avg_ms": 15.6
+    },
+    "GET /api/v1/terms/{id}/analytics/monthly": {
+      "samples": 15,
+      "median_ms": 40.26,
+      "min_ms": 23.73,
+      "max_ms": 107.99,
+      "avg_ms": 42.25
+    },
+    "GET /api/v1/performance/overview": {
+      "samples": 15,
+      "median_ms": 25.26,
+      "min_ms": 10.35,
+      "max_ms": 91.23,
+      "avg_ms": 27.62
+    },
+    "GET /api/v1/auth/settings": {
+      "samples": 15,
+      "median_ms": 4.08,
+      "min_ms": 3.24,
+      "max_ms": 5.52,
+      "avg_ms": 4.07
+    },
+    "GET /api/v1/startup/status": {
+      "samples": 15,
+      "median_ms": 5.52,
+      "min_ms": 3.33,
+      "max_ms": 29.14,
+      "avg_ms": 8.56
+    }
+  },
+  "navigation_timings": {
+    "cold_load_ms": 1022.52,
+    "attendance_nav_ms": 203.13,
+    "performance_nav_ms": 232.09,
+    "home_nav_ms": 79.67,
+    "settings_nav_ms": 88.21
+  },
+  "bundle": {
+    "js_bytes": 416826,
+    "css_bytes": 78769,
+    "files": [
+      {
+        "name": "index-Cpd-E2LD.js",
+        "bytes": 416826
+      },
+      {
+        "name": "index-CtFD0omg.css",
+        "bytes": 78769
+      }
+    ]
+  }
+}

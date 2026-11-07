@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>iCloudEMS - Day Wise Attendance - Semester 4 (SYNTHETIC FIXTURE)</title>
+  <!-- SYNTHETIC TEST FIXTURE: March 2026 Day-wise matrix for Semester 4. -->
+</head>
+<body>
+  <div class="card-body">
+    <form action="/corecampus/student/attendance/myattendance.php" method="post">
+      <select name="acadyear" id="acadyear"><option value="2025-2026" selected>2025-2026</option></select>
+      <select name="semNum[]" id="semNum"><option value="4" selected>4</option></select>
+      <select name="classid[]" id="classid"><option value="2140" selected>B.Tech CSE AIML-Sem 4</option></select>
+      <input type="text" name="from_date" id="from_date" value="01/03/2026">
+      <input type="text" name="to_date" id="to_date" value="31/03/2026">
+    </form>
+  </div>
+
+  <table class="table table-bordered" id="daywise_table">
+    <thead>
+      <tr>
+        <th>Time Slot</th>
+        <th>02/03/2026 (Mon)</th>
+        <th>03/03/2026 (Tue)</th>
+        <th>04/03/2026 (Wed)</th>
+        <th>05/03/2026 (Thu)</th>
+        <th>06/03/2026 (Fri)</th>
+        <th>09/03/2026 (Mon)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Structural Header Row that MUST be excluded from observations -->
+      <tr>
+        <td>Lecture Timings</td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <!-- Period 1 -->
+      <tr>
+        <td>08:10 - 09:00</td>
+        <td><span class="text-success">P</span><br><small>CSH201C</small></td>
+        <td><span class="text-success">P</span><br><small>CSH202C</small></td>
+        <td><span class="text-danger">A</span><br><small>MATH201</small></td>
+        <td><span class="text-success">P</span><br><small>CDO201</small></td>
+        <td><span class="text-success">P</span><br><small>CSH201C</small></td>
+        <td><span class="text-danger">A</span><br><small>CSH202C</small></td>
+      </tr>
+      <!-- Period 2 -->
+      <tr>
+        <td>09:00 - 09:50</td>
+        <td><span class="text-success">P</span><br><small>CSH202C</small></td>
+        <td><span class="text-danger">A</span><br><small>MATH201</small></td>
+        <td><span class="text-success">P</span><br><small>CSH201C</small></td>
+        <td></td> <!-- Free slot: NOT_REPORTED -->
+        <td><span class="text-success">P</span><br><small>MATH201</small></td>
+        <td><span class="text-success">P</span><br><small>CSH201C</small></td>
+      </tr>
+      <!-- Period 3 & 4 (Lab Block: 2 Periods) -->
+      <tr>
+        <td>10:40 - 12:20</td>
+        <td><span class="text-success">P</span><br><small>CSH211C [LAB 2P]</small></td>
+        <td></td>
+        <td><span class="text-danger">A</span><br><small>CSH212C [LAB 2P]</small></td>
+        <td><span class="text-success">P</span><br><small>CSH211C [LAB 2P]</small></td>
+        <td></td>
+        <td><span class="text-success">P</span><br><small>CSH212C [LAB 2P]</small></td>
+      </tr>
+      <!-- Period 5 -->
+      <tr>
+        <td>13:10 - 14:00</td>
+        <td><span class="text-success">P</span><br><small>CDO201</small></td>
+        <td><span class="text-success">P</span><br><small>CDO201</small></td>
+        <td><span class="text-success">P</span><br><small>CDO201</small></td>
+        <td><span class="text-success">P</span><br><small>CDO201</small></td>
+        <td></td>
+        <td><span class="text-success">P</span><br><small>CDO201</small></td>
+      </tr>
+    </tbody>
+  </table>
+</body>
+</html>

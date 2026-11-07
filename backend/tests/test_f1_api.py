@@ -66,7 +66,8 @@ class TestF1ApiEndpoints:
         assert response_after.status_code == 200
         assert len(response_after.json()) == 0
 
-    def test_explicit_demo_seeding(self) -> None:
+    def test_explicit_demo_seeding(self, monkeypatch) -> None:
+        monkeypatch.setenv("ATTENDPLAN_ALLOW_SYNTHETIC_IMPORT", "1")
         """Explicit POST /api/v1/demo/seed populates the database."""
         seed_resp = client.post("/api/v1/demo/seed")
         assert seed_resp.status_code == 200
