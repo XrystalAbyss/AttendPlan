@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import {
   API_BASE,
+  fetchAuthSettings,
   updateAuthSettings,
   enrollTotp,
   verifyTotp,
@@ -22,7 +23,7 @@ import {
   orchestrateLogin,
   seedDemoData,
 } from "../api/attendance";
-import type { PortalSessionStatus } from "../types/attendance";
+import type { AuthSettings, PortalSessionStatus } from "../types/attendance";
 
 interface Props {
   onComplete: () => void;
@@ -32,11 +33,24 @@ interface Props {
 export const FirstRunOnboarding: React.FC<Props> = ({ onComplete, onOpenAuthModal }) => {
   const [step, setStep] = useState<number>(1);
 
+  // Saved settings state
+  const [savedSettings, setSavedSettings] = useState<AuthSettings | null>(null);
+  const [isEditingMobile, setIsEditingMobile] = useState(false);
+
   // Step 2: Mobile state
   const [mobileNumber, setMobileNumber] = useState("");
   const [rememberMobile, setRememberMobile] = useState(true);
   const [mobileError, setMobileError] = useState<string | null>(null);
   const [isSavingMobile, setIsSavingMobile] = useState(false);
+
+  // Initial load of existing settings
+  useEffect(() => {
+    fetchAuthSettings()
+      .then((s) => {
+        setSavedSettings(s);
+      })
+      .catch(() => {});
+  }, []);
 
   // Step 3: MFA Choice state
   const [mfaChoice, setMfaChoice] = useState<"manual" | "auto">("manual");
@@ -95,20 +109,33 @@ export const FirstRunOnboarding: React.FC<Props> = ({ onComplete, onOpenAuthModa
   };
 
   const handleSaveMobile = async () => {
+    if (savedSettings?.has_saved_mobile && !isEditingMobile) {
+      setStep(3);
+      return;
+    }
     const cleaned = mobileNumber.trim();
-    if (cleaned && !/^[6-9]\d{9}$/.test(cleaned)) {
+    if (!cleaned) {
+      if (savedSettings?.has_saved_mobile) {
+        setStep(3);
+        return;
+      }
+      setMobileError("Please enter your 10-digit registered mobile number.");
+      return;
+    }
+    if (!/^[6-9]\d{9}$/.test(cleaned)) {
       setMobileError("Please enter a valid 10-digit Indian mobile number (e.g. 9876543210).");
       return;
     }
     setIsSavingMobile(true);
     setMobileError(null);
     try {
-      if (cleaned) {
-        await updateAuthSettings({
-          mobile_number: cleaned,
-          auto_mobile_autofill: rememberMobile,
-        });
-      }
+      await updateAuthSettings({
+        mobile_number: cleaned,
+        auto_mobile_autofill: rememberMobile,
+      });
+      const verified = await fetchAuthSettings();
+      setSavedSettings(verified);
+      setIsEditingMobile(false);
       setStep(3);
     } catch (err: any) {
       setMobileError(err.message || "Failed to save mobile settings.");
@@ -314,33 +341,73 @@ export const FirstRunOnboarding: React.FC<Props> = ({ onComplete, onOpenAuthModa
               Your university student portal (iCloudEMS Keycloak) uses your registered 10-digit mobile number as the username to send SMS OTPs or request Authenticator codes.
             </p>
 
-            <div className="space-y-1.5 pt-1">
-              <label htmlFor="mobile-input" className="block text-slate-400 font-medium">
-                10-Digit Mobile Number
-              </label>
-              <input
-                id="mobile-input"
-                type="tel"
-                maxLength={10}
-                placeholder="e.g. 9876543210"
-                value={mobileNumber}
-                onChange={(e) => {
-                  setMobileNumber(e.target.value.replace(/\D/g, ""));
-                  setMobileError(null);
-                }}
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
+            {savedSettings?.has_saved_mobile && !isEditingMobile ? (
+              <div className="p-3.5 bg-emerald-950/40 border border-emerald-800/70 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2 text-emerald-300 font-semibold text-xs">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    Saved Mobile Number Detected
+                  </span>
+                  <span className="font-mono text-xs font-bold text-white bg-slate-900 px-2.5 py-1 rounded border border-emerald-900">
+                    {savedSettings.masked_mobile}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 m-0">
+                  Your university mobile number is already configured in local storage (%LOCALAPPDATA%\AttendPlan\settings.json).
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingMobile(true)}
+                  className="text-xs text-indigo-400 hover:text-indigo-300 underline cursor-pointer pt-1"
+                >
+                  Change or use a different number
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-1.5 pt-1">
+                  <label htmlFor="mobile-input" className="block text-slate-400 font-medium">
+                    10-Digit Mobile Number
+                  </label>
+                  <input
+                    id="mobile-input"
+                    type="tel"
+                    maxLength={10}
+                    placeholder="e.g. 9876543210"
+                    value={mobileNumber}
+                    onChange={(e) => {
+                      setMobileNumber(e.target.value.replace(/\D/g, ""));
+                      setMobileError(null);
+                    }}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
 
-            <label className="flex items-center gap-2 text-slate-300 cursor-pointer pt-1">
-              <input
-                type="checkbox"
-                checked={rememberMobile}
-                onChange={(e) => setRememberMobile(e.target.checked)}
-                className="rounded border-slate-700 text-indigo-600 focus:ring-indigo-500"
-              />
-              <span>Remember mobile number locally for automated sign-in</span>
-            </label>
+                <label className="flex items-center gap-2 text-slate-300 cursor-pointer pt-1">
+                  <input
+                    type="checkbox"
+                    checked={rememberMobile}
+                    onChange={(e) => setRememberMobile(e.target.checked)}
+                    className="rounded border-slate-700 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>Remember mobile number locally for automated sign-in</span>
+                </label>
+
+                {isEditingMobile && savedSettings?.has_saved_mobile && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEditingMobile(false);
+                      setMobileNumber("");
+                      setMobileError(null);
+                    }}
+                    className="text-xs text-slate-400 hover:text-slate-300 underline cursor-pointer"
+                  >
+                    Cancel and keep {savedSettings.masked_mobile}
+                  </button>
+                )}
+              </>
+            )}
 
             {mobileError && (
               <div className="p-2.5 bg-rose-950/60 border border-rose-800 rounded-lg text-rose-300 text-xs">
@@ -368,7 +435,12 @@ export const FirstRunOnboarding: React.FC<Props> = ({ onComplete, onOpenAuthModa
                 disabled={isSavingMobile}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer shadow-sm transition-colors"
               >
-                {isSavingMobile ? "Saving..." : "Save & Continue"} <ArrowRight className="w-3.5 h-3.5" />
+                {isSavingMobile
+                  ? "Saving..."
+                  : savedSettings?.has_saved_mobile && !isEditingMobile
+                  ? "Continue with Saved Mobile"
+                  : "Save & Continue"}{" "}
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
@@ -599,10 +671,35 @@ export const FirstRunOnboarding: React.FC<Props> = ({ onComplete, onOpenAuthModa
               &larr; Back
             </button>
             <button
-              onClick={() => setStep(5)}
+              onClick={async () => {
+                if (isAuthenticated) {
+                  setStep(5);
+                  return;
+                }
+                setIsCheckingSession(true);
+                try {
+                  const status = await fetchPortalSessionStatus();
+                  setPortalStatus(status);
+                  if (status.state === "AUTHENTICATED") {
+                    setStep(5);
+                  } else {
+                    setBrowserError("Portal login not detected yet. Please complete sign-in and Google Authenticator MFA in the opened Chrome window.");
+                  }
+                } catch {
+                  setBrowserError("Could not reach local backend to verify portal session.");
+                } finally {
+                  setIsCheckingSession(false);
+                }
+              }}
+              disabled={isCheckingSession}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer shadow-sm transition-colors"
             >
-              {isAuthenticated ? "Proceed to Sync" : "I have signed in"} &rarr;
+              {isCheckingSession
+                ? "Verifying..."
+                : isAuthenticated
+                ? "Proceed to Sync"
+                : "Verify & Proceed to Sync"}{" "}
+              &rarr;
             </button>
           </div>
         </div>

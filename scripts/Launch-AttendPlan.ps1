@@ -107,6 +107,9 @@ Log-Ok "University portal ready"
 # -------------------------------------------------------------
 Log-Step "3/5" "Starting backend..."
 
+# Set development environment for dev launcher
+$env:ATTENDPLAN_ENV = "development"
+
 $backendUrl = "http://127.0.0.1:8000"
 $healthUrl = "$backendUrl/health"
 $backendAlreadyRunning = $false
@@ -114,8 +117,49 @@ $backendAlreadyRunning = $false
 try {
     $healthResp = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 2 -ErrorAction Stop
     if ($healthResp -and $healthResp.app -eq "AttendPlan" -and $healthResp.status -eq "healthy") {
-        $backendAlreadyRunning = $true
-        Log-Ok "$backendUrl (reused existing healthy instance)"
+        $existingRuntime = if ($healthResp.runtime) { $healthResp.runtime } else { "unknown" }
+        $existingMode = if ($healthResp.mode) { $healthResp.mode } else { "production" }
+        $existingDb = if ($healthResp.database_path) { $healthResp.database_path } else { "default" }
+
+        if ($existingRuntime -eq "source" -and $existingMode -eq "development") {
+            $backendAlreadyRunning = $true
+            Log-Ok "$backendUrl (reused existing source development instance)"
+        } else {
+            Log-Info "Port 8000 is occupied by AttendPlan ($existingRuntime runtime, $existingMode mode, db: $existingDb)."
+            Write-Host "             Development launcher requires source backend with ATTENDPLAN_ENV=development." -ForegroundColor Yellow
+            Write-Host "             Attempting graceful shutdown of the production/installed instance..." -ForegroundColor Cyan
+
+            $shutdownSuccess = $false
+            try {
+                $statusResp = Invoke-RestMethod -Uri "$backendUrl/api/v1/startup/status" -TimeoutSec 2 -ErrorAction Stop
+                $instanceToken = if ($statusResp -and $statusResp.instance_token) { $statusResp.instance_token } else { $null }
+                $headers = @{}
+                if ($instanceToken) {
+                    $headers["X-AttendPlan-Instance"] = $instanceToken
+                }
+                $null = Invoke-RestMethod -Uri "$backendUrl/api/v1/startup/shutdown" -Method Post -Headers $headers -TimeoutSec 3 -ErrorAction Stop
+                # Wait for port to be released cleanly
+                for ($k = 0; $k -lt 10; $k++) {
+                    Start-Sleep -Milliseconds 500
+                    $occ = Get-NetTCPConnection -LocalPort 8000 -LocalAddress "127.0.0.1" -State Listen -ErrorAction SilentlyContinue
+                    if (-not $occ) {
+                        $shutdownSuccess = $true
+                        break
+                    }
+                }
+            } catch {
+                Log-Info "Could not gracefully stop existing process via API: $_"
+            }
+
+            if ($shutdownSuccess) {
+                Log-Ok "Gracefully stopped existing instance. Port 8000 released."
+                $backendAlreadyRunning = $false
+            } else {
+                Log-Error "Could not safely release port 8000 from existing ($existingRuntime, $existingMode) instance."
+                Write-Host "             Please close the running AttendPlan application before launching development mode." -ForegroundColor Yellow
+                exit 1
+            }
+        }
     }
 } catch {
     $backendAlreadyRunning = $false
@@ -132,7 +176,14 @@ if (-not $backendAlreadyRunning) {
 
     $backendDir = Join-Path $repoRoot "backend"
     try {
-        $bProc = Start-Process -FilePath $pythonExe -ArgumentList "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000" -WorkingDirectory $backendDir -PassThru -WindowStyle Hidden
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $pythonExe
+        $psi.Arguments = "-m uvicorn app.main:app --host 127.0.0.1 --port 8000"
+        $psi.WorkingDirectory = $backendDir
+        $psi.EnvironmentVariables["ATTENDPLAN_ENV"] = "development"
+        $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+        $psi.UseShellExecute = $false
+        $bProc = [System.Diagnostics.Process]::Start($psi)
         Set-Content -Path $backendPidFile -Value $bProc.Id -Force
     } catch {
         Log-Error "Failed to spawn backend process: $_"

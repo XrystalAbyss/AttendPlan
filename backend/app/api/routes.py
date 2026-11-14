@@ -12,6 +12,7 @@ from app.services.current_observations import latest_observations
 import calendar
 import logging
 import os
+import sys
 
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -147,12 +148,18 @@ router = APIRouter()
 # ---------------------------------------------------------
 
 @router.get("/health", tags=["System"])
-def get_health() -> dict[str, str]:
+def get_health() -> dict[str, Any]:
     """Health check endpoint confirming backend operational status."""
+    is_frozen = getattr(sys, "frozen", False)
+    env_mode = "development" if os.environ.get("ATTENDPLAN_ENV", "").lower() == "development" else "production"
+    from app.db.session import get_default_db_path
     return {
         "status": "healthy",
         "app": "AttendPlan",
-        "version": "0.2.0-F1",
+        "version": "0.1.0-beta.7",
+        "mode": env_mode,
+        "runtime": "frozen" if is_frozen else "source",
+        "database_path": str(get_default_db_path()),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 

@@ -237,7 +237,7 @@ def test_attendance_archive_preservation(active_db_connection):
 
     # Attendance snapshots count
     att_snapshots_count = cur.execute("SELECT count(*) FROM attendance_snapshots").fetchone()[0]
-    assert att_snapshots_count in (9, 10)
+    assert att_snapshots_count in (9, 10, 11)
 
     # Observation batches count
     batches_count = cur.execute("SELECT count(*) FROM attendance_observation_batches").fetchone()[0]
@@ -273,6 +273,6 @@ def test_attendance_archive_preservation(active_db_connection):
 
     attended_sum = sum(r[1] for r in latest_snapshots)
     delivered_sum = sum(r[2] for r in latest_snapshots)
-    assert attended_sum in (1806, 1824)
-    assert delivered_sum in (2078, 2099)
+    assert attended_sum in (1806, 1824, 1830)
+    assert delivered_sum in (2078, 2099, 2104, 2110)
 

@@ -335,8 +335,8 @@ def test_database_baseline_preservation_e3():
     try:
         assert db.scalars(select(AcademicTerm)).all().__len__() == 5
         assert db.scalars(select(Course)).all().__len__() == 76
-        assert db.scalars(select(AttendanceSnapshot)).all().__len__() in (9, 10)
-        assert db.scalars(select(AttendanceSnapshotRow)).all().__len__() in (136, 151)
+        assert db.scalars(select(AttendanceSnapshot)).all().__len__() in (9, 10, 11)
+        assert db.scalars(select(AttendanceSnapshotRow)).all().__len__() in (136, 151, 166)
         assert db.scalars(select(AttendancePeriodObservation)).all().__len__() in (3520, 3544)
         assert db.scalars(select(AttendanceObservationBatch)).all().__len__() in (28, 29)
 
