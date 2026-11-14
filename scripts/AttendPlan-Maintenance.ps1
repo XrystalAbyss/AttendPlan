@@ -1,5 +1,9 @@
-﻿# AttendPlan — Maintenance, Diagnostics, and Storage Recovery
-# Provides safe management of local database, caches, backups, and resets.
+﻿<#
+.SYNOPSIS
+AttendPlan Storage & Maintenance Utility
+Advanced local-first maintenance tool for diagnosing database integrity,
+creating verified SQLite backups, cleaning temporary caches, and executing safe resets.
+#>
 param(
     [switch]$NonInteractive = $false
 )
@@ -11,6 +15,7 @@ $AttendPlanDataDir = Join-Path $AppDataLocal "AttendPlan"
 $DbPath = Join-Path $AttendPlanDataDir "attendplan.sqlite3"
 $SettingsPath = Join-Path $AttendPlanDataDir "settings.json"
 $BackupsDir = Join-Path $AttendPlanDataDir "backups"
+$EvidenceDir = Join-Path $AttendPlanDataDir "support_evidence"
 
 # Find AttendPlan executable or Python environment
 $AppExe = $null
@@ -41,26 +46,37 @@ foreach ($candidate in $PossiblePythons) {
 function Show-Header {
     Clear-Host
     Write-Host "==================================================================" -ForegroundColor Cyan
-    Write-Host "  AttendPlan — Maintenance, Diagnostics & Storage Utility" -ForegroundColor Cyan
+    Write-Host "  AttendPlan — Storage & Maintenance Utility (Advanced)" -ForegroundColor Cyan
     Write-Host "==================================================================" -ForegroundColor Cyan
-    Write-Host " Data Directory : $AttendPlanDataDir"
-    Write-Host " Database File  : $DbPath"
+    Write-Host " Local Data Directory : $AttendPlanDataDir"
+    Write-Host " Database Location    : $DbPath"
     if (Test-Path $DbPath) {
         $size = (Get-Item $DbPath).Length
-        Write-Host " Database Status: PRESENT ($([math]::Round($size / 1MB, 2)) MB)" -ForegroundColor Green
+        Write-Host " Database Status      : PRESENT ($([math]::Round($size / 1MB, 2)) MB)" -ForegroundColor Green
     } else {
-        Write-Host " Database Status: NOT FOUND" -ForegroundColor Yellow
+        Write-Host " Database Status      : NOT FOUND" -ForegroundColor Yellow
     }
     if (Test-Path $SettingsPath) {
-        Write-Host " Settings File  : PRESENT" -ForegroundColor Green
+        Write-Host " Settings File        : PRESENT" -ForegroundColor Green
     } else {
-        Write-Host " Settings File  : NOT FOUND" -ForegroundColor Yellow
+        Write-Host " Settings File        : NOT FOUND" -ForegroundColor Yellow
+    }
+    if (Test-Path $EvidenceDir) {
+        Write-Host " Security Evidence    : PROTECTED ($((Get-ChildItem $EvidenceDir -Recurse -File).Count) items)" -ForegroundColor Magenta
     }
     Write-Host "==================================================================" -ForegroundColor Cyan
 }
 
+function Test-IsAppRunning {
+    $conns = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
+    if ($conns) {
+        return $true
+    }
+    return $false
+}
+
 function Invoke-IntegrityCheck {
-    Write-Host "`n[1] Running Storage Health & Integrity Check..." -ForegroundColor Yellow
+    Write-Host "`n[1] Running Storage Health & Database Integrity Check..." -ForegroundColor Yellow
     if (-not (Test-Path $DbPath)) {
         Write-Host "No database found at $DbPath" -ForegroundColor Red
         return
@@ -82,59 +98,97 @@ function Invoke-IntegrityCheck {
     }
 
     if (Test-Path $SettingsPath) {
-        Write-Host "`nSettings Overview:" -ForegroundColor Gray
+        Write-Host "`nSettings Overview (Non-Sensitive):" -ForegroundColor Gray
         try {
             $raw = Get-Content $SettingsPath -Raw | ConvertFrom-Json
-            Write-Host "  Has Saved Mobile: $($raw.has_saved_mobile)"
-            Write-Host "  Masked Mobile   : $($raw.masked_mobile)"
-            Write-Host "  Auto Continuation: $($raw.auto_login_continuation)"
+            $mob = $raw.saved_mobile_number
+            $masked = if ($mob -and $mob.Length -ge 4) { "******" + $mob.Substring($mob.Length - 4) } else { "None" }
+            Write-Host "  Saved Mobile Number    : $masked"
+            Write-Host "  Auto Mobile Autofill   : $($raw.auto_mobile_autofill)"
+            Write-Host "  Auto Continuation      : $($raw.auto_login_continuation)"
+            Write-Host "  Auto TOTP Autofill     : $($raw.auto_totp_autofill)"
         } catch {
-            Write-Host "  Failed to read settings.json: $_" -ForegroundColor Red
+            Write-Host "  Failed to parse settings.json: $_" -ForegroundColor Red
         }
     }
 }
 
 function Invoke-SafetyBackup {
-    Write-Host "`n[2] Creating Consistent Safety Backup..." -ForegroundColor Yellow
+    param([string]$CustomDest = "")
+    Write-Host "`n[2] Creating Verified SQLite Online Safety Backup..." -ForegroundColor Yellow
     if (-not (Test-Path $DbPath)) {
-        Write-Host "ERROR: No database file found to backup." -ForegroundColor Red
-        return
-    }
-
-    if (-not (Test-Path $BackupsDir)) {
-        New-Item -ItemType Directory -Path $BackupsDir -Force | Out-Null
+        Write-Host "ERROR: No database file found to back up." -ForegroundColor Red
+        return $null
     }
 
     $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-    $backupDest = Join-Path $BackupsDir "attendplan_backup_$timestamp.sqlite3"
+    $backupDest = if ($CustomDest) {
+        $CustomDest
+    } else {
+        if (-not (Test-Path $BackupsDir)) {
+            New-Item -ItemType Directory -Path $BackupsDir -Force | Out-Null
+        }
+        Join-Path $BackupsDir "attendplan_backup_$timestamp.sqlite3"
+    }
+
+    # Collision check
+    if ((Resolve-Path $DbPath -ErrorAction SilentlyContinue).Path -eq (Resolve-Path $backupDest -ErrorAction SilentlyContinue).Path) {
+        Write-Host "ERROR: Destination collides with active database. Aborting." -ForegroundColor Red
+        return $null
+    }
 
     if ($AppExe) {
-        Write-Host "Using AttendPlan CLI engine..." -ForegroundColor Gray
-        cmd /c "`"$AppExe`" --backup-db `"$backupDest`""
+        Write-Host "Invoking application online backup engine..." -ForegroundColor Gray
+        $output = cmd /c "`"$AppExe`" --backup-db `"$backupDest`""
+        $output | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "ERROR: Online backup failed with exit code $LASTEXITCODE" -ForegroundColor Red
+            return $null
+        }
     } elseif ($PythonExe) {
         $launcher = Join-Path $PSScriptRoot "..\backend\launcher.py"
         if (Test-Path $launcher) {
-            Write-Host "Using Python launcher backup engine..." -ForegroundColor Gray
+            Write-Host "Invoking Python online backup engine..." -ForegroundColor Gray
             & $PythonExe $launcher --backup-db $backupDest
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "ERROR: Python backup engine failed." -ForegroundColor Red
+                return $null
+            }
         }
     } else {
-        Copy-Item -Path $DbPath -Destination $backupDest -Force
-        $hash = (Get-FileHash -Path $backupDest -Algorithm SHA256).Hash
-        Write-Host "BACKUP_SUCCESS: $backupDest" -ForegroundColor Green
-        Write-Host "SHA256: $hash"
-        Write-Host "SIZE: $((Get-Item $backupDest).Length) bytes"
+        Write-Host "ERROR: Neither AttendPlan.exe nor Python launcher is available for online SQLite backup." -ForegroundColor Red
+        Write-Host "Raw file copying of an active SQLite database is strictly prohibited to prevent corruption." -ForegroundColor Red
+        return $null
     }
+
+    # Verify backup existence and nonzero size
+    if (-not (Test-Path $backupDest) -or (Get-Item $backupDest).Length -eq 0) {
+        Write-Host "ERROR: Backup verification failed: file does not exist or has zero bytes." -ForegroundColor Red
+        return $null
+    }
+
+    return $backupDest
 }
 
 function Invoke-CacheCleanup {
     Write-Host "`n[3] Cleaning Regenerable Temporary Caches..." -ForegroundColor Yellow
-    Write-Host "NOTE: Saved database, academic history, and settings will NOT be touched." -ForegroundColor Gray
+    Write-Host "NOTE: Saved attendance records, courses, settings, and backups will NOT be touched." -ForegroundColor Gray
 
+    if (Test-IsAppRunning) {
+        Write-Host "WARNING: AttendPlan is currently running. Please close AttendPlan before cleaning caches." -ForegroundColor Yellow
+        $proceed = Read-Host "Proceed anyway? [y/N]"
+        if ($proceed -ne "y" -and $proceed -ne "Y") {
+            Write-Host "Cache cleanup cancelled." -ForegroundColor Green
+            return
+        }
+    }
+
+    # Note: Correct directory name is 'chrome-profile' (with a hyphen)
     $cacheDirs = @(
-        (Join-Path $AttendPlanDataDir "chrome_profile\Default\Cache"),
-        (Join-Path $AttendPlanDataDir "chrome_profile\Default\Code Cache"),
-        (Join-Path $AttendPlanDataDir "chrome_profile\Default\DawnGraphiteCache"),
-        (Join-Path $AttendPlanDataDir "chrome_profile\Default\GPUCache")
+        (Join-Path $AttendPlanDataDir "chrome-profile\Default\Cache"),
+        (Join-Path $AttendPlanDataDir "chrome-profile\Default\Code Cache"),
+        (Join-Path $AttendPlanDataDir "chrome-profile\Default\DawnGraphiteCache"),
+        (Join-Path $AttendPlanDataDir "chrome-profile\Default\GPUCache")
     )
 
     $cleanedCount = 0
@@ -142,7 +196,7 @@ function Invoke-CacheCleanup {
         if (Test-Path $dir) {
             try {
                 Remove-Item -Path "$dir\*" -Recurse -Force -ErrorAction SilentlyContinue
-                Write-Host "Cleaned: $dir" -ForegroundColor Green
+                Write-Host "Cleaned Cache: $dir" -ForegroundColor Green
                 $cleanedCount++
             } catch {
                 Write-Host "Warning: Could not clean $dir (file may be locked)" -ForegroundColor Yellow
@@ -154,63 +208,132 @@ function Invoke-CacheCleanup {
     if (Test-Path $logsDir) {
         try {
             Remove-Item -Path "$logsDir\*.log" -Force -ErrorAction SilentlyContinue
-            Write-Host "Cleaned: $logsDir log files" -ForegroundColor Green
+            Write-Host "Cleaned Logs: $logsDir" -ForegroundColor Green
             $cleanedCount++
         } catch {
             Write-Host "Warning: Could not clean logs directory" -ForegroundColor Yellow
         }
     }
 
-    Write-Host "`nCache cleanup finished ($cleanedCount locations processed)." -ForegroundColor Green
+    Write-Host "`nCache cleanup finished ($cleanedCount locations processed). Authentication and cookies preserved." -ForegroundColor Green
 }
 
 function Invoke-StandardUninstall {
-    Write-Host "`n[4] Standard Safe Uninstallation..." -ForegroundColor Yellow
+    Write-Host "`n[4] Standard Safe Program Uninstallation..." -ForegroundColor Yellow
+    Write-Host "Program binaries and shortcuts will be removed. Your student attendance database, settings, and backups will be safely preserved." -ForegroundColor Gray
+
     $regKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{C6B5E87D-1F33-4D91-8846-9D923E2A3819}_is1"
     if (Test-Path $regKey) {
-        $uninstaller = (Get-ItemProperty -Path $regKey).UninstallString
-        if ($uninstaller) {
-            Write-Host "Found registered uninstaller: $uninstaller" -ForegroundColor Cyan
-            Write-Host "Launching official uninstaller..." -ForegroundColor Green
-            Start-Process -FilePath $uninstaller
-            return
+        $uninstallerRaw = (Get-ItemProperty -Path $regKey).UninstallString
+        if ($uninstallerRaw) {
+            # Safely parse executable and arguments
+            if ($uninstallerRaw -match '^"([^"]+)"(.*)$') {
+                $exePath = $matches[1]
+                $argStr = $matches[2].Trim()
+            } else {
+                $parts = $uninstallerRaw -split ' ', 2
+                $exePath = $parts[0]
+                $argStr = if ($parts.Length -gt 1) { $parts[1] } else { "" }
+            }
+
+            if (Test-Path $exePath) {
+                Write-Host "Launching official uninstaller: $exePath" -ForegroundColor Cyan
+                $proc = Start-Process -FilePath $exePath -ArgumentList $argStr -Wait -PassThru
+                Write-Host "Uninstallation completed with exit code $($proc.ExitCode)." -ForegroundColor Green
+                Write-Host "Notice: Your attendance records remain safely preserved in $AttendPlanDataDir." -ForegroundColor Cyan
+                return
+            }
         }
     }
-    Write-Host "No registered Inno Setup uninstaller found in user registry." -ForegroundColor Yellow
+    Write-Host "No registered Inno Setup uninstaller found in Windows registry." -ForegroundColor Yellow
 }
 
 function Invoke-FullReset {
-    Write-Host "`n[5] FULL CLEAN RESET / STORAGE PURGE" -ForegroundColor Red
-    Write-Host "WARNING: This will permanently erase your local database, courses, and settings." -ForegroundColor Red
-    Write-Host "An emergency safety backup will be automatically saved to your Desktop before removal." -ForegroundColor Yellow
+    Write-Host "`n[5] FULL CLEAN RESET / APPLICATION DATA PURGE" -ForegroundColor Red
+    Write-Host "==================================================================" -ForegroundColor Red
+    Write-Host " WARNING: This will permanently erase your local attendance database," -ForegroundColor Red
+    Write-Host " historical records, course catalogs, and saved login preferences." -ForegroundColor Red
+    Write-Host " Stored security incident evidence and existing backups will NOT be deleted." -ForegroundColor Yellow
+    Write-Host " A verified emergency backup MUST be created before deletion can occur." -ForegroundColor Yellow
+    Write-Host "==================================================================" -ForegroundColor Red
 
-    $confirm = Read-Host "`nType 'DELETE' in capital letters to proceed with full local data reset"
+    if (Test-IsAppRunning) {
+        Write-Host "AttendPlan is currently running. You must close AttendPlan before performing a reset." -ForegroundColor Red
+        return
+    }
+
+    $confirm = Read-Host "`nType 'DELETE' in capital letters to confirm application data reset"
     if ($confirm -ne "DELETE") {
         Write-Host "Reset aborted. No files were modified." -ForegroundColor Green
         return
     }
 
-    # Emergency backup
-    if (Test-Path $DbPath) {
-        $desktopDir = [Environment]::GetFolderPath("Desktop")
-        $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-        $emergencyBackup = Join-Path $desktopDir "AttendPlan_Emergency_Backup_$timestamp.sqlite3"
-        Copy-Item -Path $DbPath -Destination $emergencyBackup -Force
-        Write-Host "Emergency pre-reset backup saved to: $emergencyBackup" -ForegroundColor Green
+    $desktopDir = [Environment]::GetFolderPath("Desktop")
+    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    $emergencyBackup = Join-Path $desktopDir "AttendPlan_PreReset_Backup_$timestamp.sqlite3"
+
+    Write-Host "`nCreating mandatory safety backup to Desktop..." -ForegroundColor Cyan
+    $backupResult = Invoke-SafetyBackup -CustomDest $emergencyBackup
+
+    if (-not $backupResult -or -not (Test-Path $emergencyBackup) -or (Get-Item $emergencyBackup).Length -eq 0) {
+        Write-Host "`nCRITICAL SAFETY ABORT: Safety backup failed or failed integrity verification." -ForegroundColor Red
+        Write-Host "The database and local data will NOT be deleted. Your data remains untouched." -ForegroundColor Red
+        return
     }
 
-    # Verify path safety before deleting
-    if ($AttendPlanDataDir.EndsWith("AttendPlan") -and (Test-Path $AttendPlanDataDir)) {
-        Write-Host "Removing local storage directory: $AttendPlanDataDir..." -ForegroundColor Yellow
-        try {
-            Remove-Item -Path $AttendPlanDataDir -Recurse -Force
-            Write-Host "Local AttendPlan storage successfully cleared." -ForegroundColor Green
-        } catch {
-            Write-Host "Error clearing storage: $_" -ForegroundColor Red
+    Write-Host "Safety backup verified successfully: $emergencyBackup" -ForegroundColor Green
+
+    # Revoke authenticator in Windows Credential Manager
+    if ($AppExe) {
+        cmd /c "`"$AppExe`" --purge-vault"
+    } elseif ($PythonExe) {
+        $launcher = Join-Path $PSScriptRoot "..\backend\launcher.py"
+        if (Test-Path $launcher) {
+            & $PythonExe $launcher --purge-vault
         }
-    } else {
-        Write-Host "Safety check prevented deletion: Path does not end with 'AttendPlan'" -ForegroundColor Red
     }
+
+    # Strict Allowlist of application-owned files to delete in %LOCALAPPDATA%\AttendPlan
+    $allowlistFiles = @(
+        "attendplan.sqlite3",
+        "attendplan.sqlite3-wal",
+        "attendplan.sqlite3-shm",
+        "settings.json",
+        "startup.json",
+        "term_calendars.json",
+        "totp_metadata.json"
+    )
+
+    $allowlistDirs = @(
+        "logs",
+        "run",
+        "chrome-profile"
+    )
+
+    Write-Host "`nRemoving working database and configuration (allowlist only)..." -ForegroundColor Yellow
+    foreach ($fname in $allowlistFiles) {
+        $target = Join-Path $AttendPlanDataDir $fname
+        if (Test-Path $target) {
+            Remove-Item -Path $target -Force -ErrorAction SilentlyContinue
+            Write-Host "  Deleted: $fname" -ForegroundColor Gray
+        }
+    }
+
+    foreach ($dname in $allowlistDirs) {
+        $targetDir = Join-Path $AttendPlanDataDir $dname
+        if (Test-Path $targetDir) {
+            Remove-Item -Path $targetDir -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "  Cleared: $dname\" -ForegroundColor Gray
+        }
+    }
+
+    Write-Host "`n==================================================================" -ForegroundColor Green
+    Write-Host "  APPLICATION DATA RESET COMPLETED SUCCESSFULLY" -ForegroundColor Green
+    Write-Host "==================================================================" -ForegroundColor Green
+    Write-Host "  Emergency Backup Preserved : $emergencyBackup" -ForegroundColor Green
+    Write-Host "  Historical Backups Kept    : $BackupsDir" -ForegroundColor Cyan
+    Write-Host "  Security Evidence Kept     : $EvidenceDir" -ForegroundColor Magenta
+    Write-Host "==================================================================" -ForegroundColor Green
 }
 
 if ($NonInteractive) {
@@ -223,17 +346,17 @@ do {
     Show-Header
     Write-Host " Select an option:" -ForegroundColor White
     Write-Host "  [1] Storage Health & Database Integrity Check"
-    Write-Host "  [2] Create Immediate Consistent Safety Backup"
-    Write-Host "  [3] Clean Temporary Cache & Profile Data (Preserves Database)"
-    Write-Host "  [4] Standard Safe Uninstall (Preserves Database & Settings)"
-    Write-Host "  [5] Full Clean Reset (Erases Local Data — Requires Typed Confirmation)"
+    Write-Host "  [2] Create Verified Safety Backup (SQLite Online Engine)"
+    Write-Host "  [3] Clean Temporary Cache & Profile Data (Preserves Database & Settings)"
+    Write-Host "  [4] Standard Safe Program Uninstall (Preserves All User Data)"
+    Write-Host "  [5] Full Application Data Reset (Requires 'DELETE' & Verified Backup)"
     Write-Host "  [0] Exit"
     Write-Host ""
     $choice = Read-Host "Enter selection [0-5]"
 
     switch ($choice) {
         "1" { Invoke-IntegrityCheck; Read-Host "`nPress Enter to return to menu..." }
-        "2" { Invoke-SafetyBackup; Read-Host "`nPress Enter to return to menu..." }
+        "2" { Invoke-SafetyBackup | Out-Null; Read-Host "`nPress Enter to return to menu..." }
         "3" { Invoke-CacheCleanup; Read-Host "`nPress Enter to return to menu..." }
         "4" { Invoke-StandardUninstall; Read-Host "`nPress Enter to return to menu..." }
         "5" { Invoke-FullReset; Read-Host "`nPress Enter to return to menu..." }

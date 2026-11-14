@@ -1,9 +1,9 @@
 {
   "product": "AttendPlan",
-  "version": "0.1.0-beta.8",
+  "version": "0.1.0-beta.9",
   "target_platform": "win32-x64",
   "architecture": "x64",
-  "build_timestamp": "2026-11-14T20:10:18Z",
+  "build_timestamp": "2026-11-14T20:57:30Z",
   "artifacts": [
     {
       "filename": "AttendPlan-0.1.0-beta.1-Setup.exe",
@@ -112,8 +112,8 @@
       "size_bytes": 81655495,
       "sha256": "4e6032591c54cf7f5615beb2fd5795880b6f1f348246b9c6e46e9444b53f34cc",
       "privileges_required": "lowest",
-      "default_install_dir": "%APPDATA%\\AttendPlan\\app",
-      "status": "ACTIVE_FRIENDS_BETA_CANDIDATE",
+      "default_install_dir": "%LOCALAPPDATA%\\AttendPlan\\app",
+      "status": "ROLLBACK_CANDIDATE",
       "improvements": [
         "Windows installation lifecycle: native Inno Setup AppMutex (AttendPlanDesktopAppMutex) running instance detection",
         "In-place upgrade preserving existing academic database, courses, snapshots, and authentication settings",
@@ -124,6 +124,26 @@
         "Safe runtime switching in Launch-AttendPlan.ps1 with conflict diagnosis, active sync job protection, and explicit user confirmation",
         "Settings recovery state machine in FirstRunOnboarding.tsx distinguishing loading, saved_found, empty, and unavailable states with verified read-back",
         "Sanitized unauthenticated /health endpoint removing raw personal filesystem paths and surfacing database_status: 'connected'"
+      ]
+    },
+    {
+      "filename": "AttendPlan-0.1.0-beta.9-Setup.exe",
+      "version": "0.1.0-beta.9",
+      "type": "Inno Setup Installer (User Mode - Installer Data-Safety & Maintenance Correction)",
+      "size_bytes": 81666693,
+      "sha256": "47d63cbb6b5a5c7a61ddc2b6be519aed8170fde8650136e8e391c3982a1c35c5",
+      "privileges_required": "lowest",
+      "default_install_dir": "%LOCALAPPDATA%\\AttendPlan\\app",
+      "status": "ACTIVE_FRIENDS_BETA_CANDIDATE",
+      "improvements": [
+        "Removed dangerous directory-wide DelTree on {localappdata}\\AttendPlan in uninstaller; default uninstallation removes only application binaries and shortcuts, preserving 100% of user data, academic records, and settings",
+        "Protected sensitive directories backups/ and support_evidence/ permanently against deletion during any maintenance reset",
+        "Implemented strict allowlist deletion (--reset-app-data) requiring --confirm DELETE and a pre-verified external backup via SQLite online backup API before any deletion",
+        "Implemented comprehensive database inspection (--check-db, --check-db-file <PATH>) verifying PRAGMA integrity_check and reporting academic entity counts",
+        "Fixed Win32 named mutex semantics in launcher.py using explicit wintypes prototypes, GetLastError() == ERROR_ALREADY_EXISTS (183), and proper handle lifecycle management",
+        "Implemented integer-based semantic version comparison in Pascal script (CompareSemanticVersions) supporting Major.Minor.Patch and prerelease ordering (e.g. beta.10 > beta.8)",
+        "Hardened AttendPlan-Maintenance.ps1 to target hyphenated chrome-profile, perform non-destructive cache cleanup, parse settings.json fields accurately, and mask mobile numbers",
+        "Synced API /health version to 0.1.0-beta.9 and added 15 automated unit tests in test_g4_4r_installer_lifecycle.py covering installer safety and lifecycle logic"
       ]
     }
   ]

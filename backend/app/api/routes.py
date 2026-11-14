@@ -155,7 +155,7 @@ def get_health() -> dict[str, Any]:
     return {
         "status": "healthy",
         "app": "AttendPlan",
-        "version": "0.1.0-beta.8",
+        "version": "0.1.0-beta.9",
         "mode": env_mode,
         "runtime": "frozen" if is_frozen else "source",
         "database_status": "connected",
