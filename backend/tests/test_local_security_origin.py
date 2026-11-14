@@ -6,18 +6,31 @@ from app.main import app
 client = TestClient(app)
 
 
-def test_allowed_loopback_origins_succeed():
-    """Verify that requests from approved loopback origins succeed."""
-    origins = [
+def test_allowed_loopback_origins_succeed(monkeypatch):
+    """Verify that requests from approved loopback origins succeed based on environment."""
+    # Production mode: only bound port (8000) allowed
+    monkeypatch.delenv("ATTENDPLAN_ENV", raising=False)
+    prod_origins = [
         "http://127.0.0.1:8000",
         "http://localhost:8000",
-        "http://127.0.0.1:5173",
-        "http://localhost:5173",
-        "http://127.0.0.1:8001",
     ]
-    for org in origins:
+    for org in prod_origins:
         response = client.get("/api/v1/startup/status", headers={"Origin": org})
         assert response.status_code == 200, f"Origin {org} failed: {response.status_code}"
+
+    # Unrelated loopback port is blocked in production
+    res_bad_port = client.get("/api/v1/startup/status", headers={"Origin": "http://127.0.0.1:8001"})
+    assert res_bad_port.status_code == 403
+
+    # Development mode: Vite dev ports are also permitted
+    monkeypatch.setenv("ATTENDPLAN_ENV", "development")
+    dev_origins = [
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+    ]
+    for org in dev_origins:
+        response = client.get("/api/v1/startup/status", headers={"Origin": org})
+        assert response.status_code == 200, f"Dev origin {org} failed: {response.status_code}"
 
 
 def test_external_origins_are_forbidden():

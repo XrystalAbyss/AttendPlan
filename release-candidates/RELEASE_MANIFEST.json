@@ -1,9 +1,9 @@
 {
   "product": "AttendPlan",
-  "version": "0.1.0-beta.6",
+  "version": "0.1.0-beta.7",
   "target_platform": "win32-x64",
   "architecture": "x64",
-  "build_timestamp": "2026-11-14T12:21:32Z",
+  "build_timestamp": "2026-11-14T13:13:33Z",
   "artifacts": [
     {
       "filename": "AttendPlan-0.1.0-beta.1-Setup.exe",
@@ -13,7 +13,8 @@
       "sha256": "8ca484102a83739165cae2f81c07b0448f987abb6708e47893d13c1d3adbdbcc",
       "privileges_required": "lowest",
       "default_install_dir": "%LOCALAPPDATA%\\AttendPlan\\app",
-      "status": "HISTORICAL_BASELINE"
+      "status": "HISTORICAL_REMOVED",
+      "note": "Binary removed in G.4.2R storage optimization to reclaim local disk space; hash preserved for provenance."
     },
     {
       "filename": "AttendPlan-0.1.0-beta.2-Setup.exe",
@@ -23,7 +24,8 @@
       "sha256": "fb21409f226415472e750d1b490ac2979e4f31d18227103b95fa31e777837311",
       "privileges_required": "lowest",
       "default_install_dir": "%LOCALAPPDATA%\\AttendPlan\\app",
-      "status": "SUPERSEDED_BY_BETA_3"
+      "status": "HISTORICAL_REMOVED",
+      "note": "Binary removed in G.4.2R storage optimization to reclaim local disk space; hash preserved for provenance."
     },
     {
       "filename": "AttendPlan-0.1.0-beta.3-Setup.exe",
@@ -33,7 +35,8 @@
       "sha256": "12b9465d69ec4c72aca8888bde24362bc28cc9734a727d28ca2bd6415f1e63b5",
       "privileges_required": "lowest",
       "default_install_dir": "%LOCALAPPDATA%\\AttendPlan\\app",
-      "status": "SUPERSEDED_BY_BETA_4"
+      "status": "HISTORICAL_REMOVED",
+      "note": "Binary removed in G.4.2R storage optimization to reclaim local disk space; hash preserved for provenance."
     },
     {
       "filename": "AttendPlan-0.1.0-beta.4-Setup.exe",
@@ -74,7 +77,7 @@
       "sha256": "c2d7a5274c72ff79f43a31b702e68eb0bcf96e7dc7417a6a4dd08191057d16cc",
       "privileges_required": "lowest",
       "default_install_dir": "%LOCALAPPDATA%\\AttendPlan\\app",
-      "status": "QUALIFIED_FRIENDS_BETA_RELEASE",
+      "status": "ROLLBACK_CANDIDATE",
       "improvements": [
         "Refactored performance import into a strictly atomic, caller-owned transaction with complete rollback safety on failure",
         "Enforced pre-consumption validation of marks preview jobs before mutation, guaranteeing zero broken state or orphaned claims",
@@ -82,6 +85,24 @@
         "Implemented defensible same-instance operation authorization for /api/v1/startup/shutdown, session disconnect, and database backup export using loopback check, origin/referer port matching, and in-memory instance tokens",
         "Simplified student PerformanceView: elevated continuous internal assessments to a prominent, first-class workflow, removed retired official-results dropdown, and eliminated misleading unverified GPA table content",
         "Enhanced desktop launcher clean shutdown with explicit database engine disposal to ensure SQLite WAL checkpoints finalize gracefully"
+      ]
+    },
+    {
+      "filename": "AttendPlan-0.1.0-beta.7-Setup.exe",
+      "version": "0.1.0-beta.7",
+      "type": "Inno Setup Installer (User Mode - Production Hardened Friends Beta)",
+      "size_bytes": 81704034,
+      "sha256": "31f3a966681297b0959dd4fc9d10e04160a041d363aacc7750d3bbf1ed38c1d4",
+      "privileges_required": "lowest",
+      "default_install_dir": "%LOCALAPPDATA%\\AttendPlan\\app",
+      "status": "ACTIVE_FRIENDS_BETA_CANDIDATE",
+      "improvements": [
+        "Production same-origin security enforcement: restricts /api/ access strictly to the dynamically bound application origin (e.g. 127.0.0.1:<bound_port>), blocking unrelated localhost ports (e.g. 8001) and external domains",
+        "Dynamic CORS header management in LocalOriginSecurityMiddleware: attaches Access-Control-Allow-Origin dynamically strictly to verified allowed origins, preventing cross-origin token exposure",
+        "Instance token exposure closure in GET /api/v1/startup/status: enforces origin and referer verification so cross-origin contexts receive 403 Forbidden without leaking authorization tokens",
+        "Deterministic Exit UX in frontend/src/App.tsx: verifies shutdown response status, handles authorization failures gracefully, and polls loopback status until port release is confirmed before advising browser closure",
+        "Local storage optimization: removed obsolete beta.1, beta.2, and beta.3 installers and cleared packaging build caches, reclaiming 272.12 MB of local disk space",
+        "Expanded negative security tests in test_launcher_and_shutdown.py covering origin isolation, dev mode switching, OPTIONS preflight, dynamic port binding, and Referer verification"
       ]
     }
   ]

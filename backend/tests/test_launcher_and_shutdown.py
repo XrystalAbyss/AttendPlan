@@ -35,7 +35,7 @@ def test_shutdown_endpoint_security_and_trigger():
     # Unauthorized port rejected
     res_bad_port = client.post("/api/v1/startup/shutdown", headers={"origin": "http://localhost:9999"})
     assert res_bad_port.status_code == 403
-    assert "port" in res_bad_port.json()["detail"].lower()
+    assert "not permitted" in res_bad_port.json()["detail"].lower()
 
     # Instance token enforcement test
     app.state.instance_token = "secret-instance-token-12345"
@@ -73,6 +73,125 @@ def test_status_endpoint_returns_instance_token():
         assert res.json().get("instance_token") == "desktop-instance-token-abc"
     finally:
         app.state.instance_token = None
+
+
+def test_production_same_origin_security_and_cors_headers():
+    """Verify production same-origin enforcement, CORS header restriction, and dynamic port binding."""
+    client = TestClient(app)
+    app.state.bound_port = 8000
+    app.state.instance_token = "valid-token-xyz"
+    try:
+        # 1. Legitimate bound loopback origin gets 200 and CORS header
+        res_ok = client.get("/api/v1/startup/status", headers={"origin": "http://127.0.0.1:8000"})
+        assert res_ok.status_code == 200
+        assert res_ok.headers.get("access-control-allow-origin") == "http://127.0.0.1:8000"
+        assert res_ok.headers.get("access-control-allow-credentials") == "true"
+        assert res_ok.json().get("instance_token") == "valid-token-xyz"
+
+        # 2. Unrelated local port (8001) cannot read token from /status
+        res_unrelated = client.get("/api/v1/startup/status", headers={"origin": "http://localhost:8001"})
+        assert res_unrelated.status_code == 403
+        assert "not permitted" in res_unrelated.json()["detail"].lower()
+        assert "access-control-allow-origin" not in res_unrelated.headers
+
+        # 3. Unrelated local port (8001) cannot trigger shutdown
+        res_shutdown_bad = client.post(
+            "/api/v1/startup/shutdown",
+            headers={
+                "origin": "http://localhost:8001",
+                "x-attendplan-instance": "valid-token-xyz",
+            },
+        )
+        assert res_shutdown_bad.status_code == 403
+        assert "access-control-allow-origin" not in res_shutdown_bad.headers
+
+        # 4. Cross-site request rejected
+        res_cross = client.get("/api/v1/startup/status", headers={"sec-fetch-site": "cross-site"})
+        assert res_cross.status_code == 403
+        assert "cross-site" in res_cross.json()["detail"].lower()
+
+        # 5. Mismatched Referer port rejected
+        res_bad_ref = client.get("/api/v1/startup/status", headers={"referer": "http://localhost:8001/app"})
+        assert res_bad_ref.status_code == 403
+        assert "referer" in res_bad_ref.json()["detail"].lower()
+
+        # 6. Valid Referer accepted
+        res_ok_ref = client.get("/api/v1/startup/status", headers={"referer": "http://127.0.0.1:8000/"})
+        assert res_ok_ref.status_code == 200
+
+        # 7. Missing Origin / Referer (e.g. backend service or same-origin direct tool) succeeds
+        res_direct = client.get("/api/v1/startup/status")
+        assert res_direct.status_code == 200
+
+        # 8. Dynamic bound port: set bound_port to 8005
+        app.state.bound_port = 8005
+        # Port 8005 is now permitted
+        res_dyn_ok = client.get("/api/v1/startup/status", headers={"origin": "http://127.0.0.1:8005"})
+        assert res_dyn_ok.status_code == 200
+        assert res_dyn_ok.headers.get("access-control-allow-origin") == "http://127.0.0.1:8005"
+        # Port 8000 is now rejected
+        res_dyn_old = client.get("/api/v1/startup/status", headers={"origin": "http://127.0.0.1:8000"})
+        assert res_dyn_old.status_code == 403
+
+        # 9. OPTIONS preflight
+        res_preflight_ok = client.options(
+            "/api/v1/startup/status",
+            headers={"origin": "http://127.0.0.1:8005", "access-control-request-method": "GET"},
+        )
+        assert res_preflight_ok.status_code == 200
+        assert res_preflight_ok.headers.get("access-control-allow-origin") == "http://127.0.0.1:8005"
+
+        res_preflight_bad = client.options(
+            "/api/v1/startup/status",
+            headers={"origin": "http://localhost:8001", "access-control-request-method": "GET"},
+        )
+        assert res_preflight_bad.status_code == 403
+        assert "access-control-allow-origin" not in res_preflight_bad.headers
+    finally:
+        app.state.instance_token = None
+        app.state.bound_port = None
+
+
+def test_development_mode_origin_allowlist(monkeypatch):
+    """Verify development mode enables Vite dev origins while production mode strictly blocks them."""
+    client = TestClient(app)
+    app.state.bound_port = 8000
+
+    # In production (default, ATTENDPLAN_ENV is not development)
+    monkeypatch.delenv("ATTENDPLAN_ENV", raising=False)
+    res_prod = client.get("/api/v1/startup/status", headers={"origin": "http://localhost:5173"})
+    assert res_prod.status_code == 403
+
+    # In development mode
+    monkeypatch.setenv("ATTENDPLAN_ENV", "development")
+    res_dev = client.get("/api/v1/startup/status", headers={"origin": "http://localhost:5173"})
+    assert res_dev.status_code == 200
+    assert res_dev.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+
+def test_sensitive_routes_reject_unrelated_origin():
+    """Verify disconnect and backup export routes reject cross-origin requests from unrelated local ports."""
+    client = TestClient(app)
+    app.state.bound_port = 8000
+    app.state.instance_token = "valid-token-abc"
+    try:
+        # Disconnect rejects unrelated origin
+        res_disc = client.post(
+            "/api/v1/portal/session/disconnect",
+            headers={"origin": "http://localhost:8001", "x-attendplan-instance": "valid-token-abc"},
+        )
+        assert res_disc.status_code == 403
+
+        # Backup export rejects unrelated origin
+        res_export = client.post(
+            "/api/v1/auth/backup/export",
+            json={"vault_password": "test"},
+            headers={"origin": "http://localhost:8001", "x-attendplan-instance": "valid-token-abc"},
+        )
+        assert res_export.status_code == 403
+    finally:
+        app.state.instance_token = None
+        app.state.bound_port = None
 
 
 def test_launch_unified_browser_semantics():

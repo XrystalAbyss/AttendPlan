@@ -41,18 +41,61 @@ const AttendanceDashboard: React.FC = () => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
 
   const handleExitApp = async () => {
-    if (window.confirm("Exit AttendPlan? This will stop the local background server process.")) {
-      try {
-        const instanceToken = startupStatusQuery.data?.instance_token;
-        const headers: Record<string, string> = {};
-        if (instanceToken) {
-          headers["X-AttendPlan-Instance"] = instanceToken;
-        }
-        await fetch(`${API_BASE}/api/v1/startup/shutdown`, { method: "POST", headers });
-        alert("AttendPlan server has stopped. You can safely close this browser tab.");
-      } catch {
-        alert("AttendPlan server shutdown initiated.");
+    if (!window.confirm("Exit AttendPlan? This will stop the local background server process.")) {
+      return;
+    }
+    try {
+      const instanceToken = startupStatusQuery.data?.instance_token;
+      const headers: Record<string, string> = {};
+      if (instanceToken) {
+        headers["X-AttendPlan-Instance"] = instanceToken;
       }
+      const res = await fetch(`${API_BASE}/api/v1/startup/shutdown`, {
+        method: "POST",
+        headers,
+      });
+
+      if (!res.ok) {
+        let errDetail = `Status ${res.status}`;
+        try {
+          const errJson = await res.json();
+          if (errJson && errJson.detail) {
+            errDetail = String(errJson.detail);
+          }
+        } catch {
+          // ignore json parse error
+        }
+        alert(`Shutdown authorization failed: ${errDetail}`);
+        return;
+      }
+
+      // Poll loopback status until connection is refused (server terminated and released port)
+      let serverStopped = false;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        try {
+          const check = await fetch(`${API_BASE}/api/v1/startup/status`, {
+            method: "GET",
+            headers,
+          });
+          if (!check.ok) {
+            serverStopped = true;
+            break;
+          }
+        } catch {
+          // Network error / connection refused indicates server has stopped and port is released
+          serverStopped = true;
+          break;
+        }
+      }
+
+      if (serverStopped) {
+        alert("AttendPlan server has stopped cleanly and released port. You can safely close this browser tab.");
+      } else {
+        alert("AttendPlan shutdown was requested. The background process is finalizing its exit.");
+      }
+    } catch (err: unknown) {
+      alert(`Unable to initiate server shutdown: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 

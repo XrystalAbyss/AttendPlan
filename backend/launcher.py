@@ -25,7 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-APP_VERSION = "0.1.0-beta.6"
+APP_VERSION = "0.1.0-beta.7"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 

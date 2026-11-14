@@ -1,6 +1,6 @@
 # AttendPlan
 
-> **AttendPlan v0.1.0-beta.6 — Final Beta Qualification & Real-User Handoff (November 2026)**  
+> **AttendPlan v0.1.0-beta.7 — Security Hardening, Exit UX & Supervised Friends Beta (November 2026)**  
 > **Local-First University Attendance Intelligence Application**  
 > Helping students manage a 75% subject-wise attendance requirement with exact mathematics, zero credential capture, and air-gapped local privacy.
 >
@@ -94,7 +94,7 @@ AttendPlan/
 ### 4.1 Windows Installer (For Students)
 
 For students and nontechnical users, download the latest packaged installer from the release assets:
-- **Installer**: `AttendPlan-0.1.0-beta.6-Setup.exe`
+- **Installer**: `AttendPlan-0.1.0-beta.7-Setup.exe`
 - **Installation Scope**: Installs to `%LOCALAPPDATA%\Programs\AttendPlan` without requiring Windows administrator privileges.
 - **Includes**: Standalone bundled Python backend executable and pre-built React frontend assets. No external Python, Node.js, or Git installation required.
 

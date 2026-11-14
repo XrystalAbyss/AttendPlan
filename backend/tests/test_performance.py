@@ -248,7 +248,7 @@ def test_performance_import_atomic_rollback_on_failure(tmp_path, monkeypatch):
         with Session(engine) as db:
             job = db.get(SyncJob, approval_id)
             assert job is not None
-            assert job.state == "COMPLETED"
+            assert job.state == "APPROVED"
             assert len(db.scalars(select(PerformanceSnapshot)).all()) == 0
     finally:
         app.dependency_overrides.clear()

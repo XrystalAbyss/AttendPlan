@@ -168,26 +168,19 @@ def verify_same_instance_authorization(request: Request) -> None:
     if sec_fetch_site == "cross-site":
         raise HTTPException(status_code=403, detail="Cross-site requests are forbidden.")
 
-    bound_port = getattr(request.app.state, "bound_port", None)
-    allowed_ports = {5173, 4173, 3000, *range(8000, 8011)}
-    if bound_port is not None:
-        allowed_ports.add(bound_port)
+    from app.main import get_allowed_origins
+    allowed_origins = get_allowed_origins(request.app.state)
 
     origin = request.headers.get("origin")
-    if origin:
-        parts = urlsplit(origin)
-        if parts.hostname not in {"127.0.0.1", "localhost", "testserver"}:
-            raise HTTPException(status_code=403, detail="Cross-origin access blocked: origin host not permitted.")
-        if parts.port is not None and parts.port not in allowed_ports:
-            raise HTTPException(status_code=403, detail=f"Cross-origin access blocked: origin port {parts.port} not permitted.")
+    if origin and origin.rstrip("/") not in allowed_origins:
+        raise HTTPException(status_code=403, detail="Cross-origin access blocked: origin not permitted.")
 
     referer = request.headers.get("referer")
     if referer:
         parts = urlsplit(referer)
-        if parts.hostname not in {"127.0.0.1", "localhost", "testserver"}:
-            raise HTTPException(status_code=403, detail="Cross-origin access blocked: referer host not permitted.")
-        if parts.port is not None and parts.port not in allowed_ports:
-            raise HTTPException(status_code=403, detail=f"Cross-origin access blocked: referer port {parts.port} not permitted.")
+        referer_origin = f"{parts.scheme}://{parts.netloc}".rstrip("/")
+        if referer_origin not in allowed_origins:
+            raise HTTPException(status_code=403, detail="Cross-origin access blocked: referer not permitted.")
 
     instance_token = getattr(request.app.state, "instance_token", None)
     if instance_token is not None:
@@ -198,6 +191,24 @@ def verify_same_instance_authorization(request: Request) -> None:
 
 @router.get("/status")
 def status(request: Request) -> dict[str, Any]:
+    from app.main import get_allowed_origins
+    allowed_origins = get_allowed_origins(request.app.state)
+
+    sec_fetch_site = request.headers.get("sec-fetch-site")
+    if sec_fetch_site == "cross-site":
+        raise HTTPException(status_code=403, detail="Cross-site requests are forbidden.")
+
+    origin = request.headers.get("origin")
+    if origin and origin.rstrip("/") not in allowed_origins:
+        raise HTTPException(status_code=403, detail="Cross-origin access blocked: origin not permitted.")
+
+    referer = request.headers.get("referer")
+    if referer:
+        parts = urlsplit(referer)
+        referer_origin = f"{parts.scheme}://{parts.netloc}".rstrip("/")
+        if referer_origin not in allowed_origins:
+            raise HTTPException(status_code=403, detail="Cross-origin access blocked: referer not permitted.")
+
     res = coordinator.status()
     instance_token = getattr(request.app.state, "instance_token", None)
     return {**res, "instance_token": instance_token}
