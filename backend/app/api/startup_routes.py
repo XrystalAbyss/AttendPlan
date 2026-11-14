@@ -4,8 +4,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from playwright.sync_api import sync_playwright
 from sqlalchemy import select
 
@@ -157,6 +158,89 @@ def refresh_current_endpoint() -> dict[str, Any]:
     return coordinator.start(force=True)
 
 
+def verify_same_instance_authorization(request: Request) -> None:
+    """Verifies that sensitive local operations originate strictly from the same AttendPlan instance."""
+    client_host = request.client.host if request.client else ""
+    if client_host not in {"127.0.0.1", "localhost", "::1", "testclient"}:
+        raise HTTPException(status_code=403, detail="Endpoint is restricted to local loopback callers.")
+
+    sec_fetch_site = request.headers.get("sec-fetch-site")
+    if sec_fetch_site == "cross-site":
+        raise HTTPException(status_code=403, detail="Cross-site requests are forbidden.")
+
+    from app.main import get_allowed_origins
+    allowed_origins = get_allowed_origins(request.app.state)
+
+    origin = request.headers.get("origin")
+    if origin and origin.rstrip("/") not in allowed_origins:
+        raise HTTPException(status_code=403, detail="Cross-origin access blocked: origin not permitted.")
+
+    referer = request.headers.get("referer")
+    if referer:
+        parts = urlsplit(referer)
+        referer_origin = f"{parts.scheme}://{parts.netloc}".rstrip("/")
+        if referer_origin not in allowed_origins:
+            raise HTTPException(status_code=403, detail="Cross-origin access blocked: referer not permitted.")
+
+    instance_token = getattr(request.app.state, "instance_token", None)
+    if instance_token is not None:
+        token_hdr = request.headers.get("x-attendplan-instance")
+        if not token_hdr or token_hdr != instance_token:
+            raise HTTPException(status_code=403, detail="Invalid or missing X-AttendPlan-Instance authorization token.")
+
+
 @router.get("/status")
-def status() -> dict[str, Any]:
-    return coordinator.status()
+def status(request: Request) -> dict[str, Any]:
+    from app.main import get_allowed_origins
+    allowed_origins = get_allowed_origins(request.app.state)
+
+    sec_fetch_site = request.headers.get("sec-fetch-site")
+    if sec_fetch_site == "cross-site":
+        raise HTTPException(status_code=403, detail="Cross-site requests are forbidden.")
+
+    origin = request.headers.get("origin")
+    if origin and origin.rstrip("/") not in allowed_origins:
+        raise HTTPException(status_code=403, detail="Cross-origin access blocked: origin not permitted.")
+
+    referer = request.headers.get("referer")
+    if referer:
+        parts = urlsplit(referer)
+        referer_origin = f"{parts.scheme}://{parts.netloc}".rstrip("/")
+        if referer_origin not in allowed_origins:
+            raise HTTPException(status_code=403, detail="Cross-origin access blocked: referer not permitted.")
+
+    res = coordinator.status()
+    instance_token = getattr(request.app.state, "instance_token", None)
+    from app.db.session import get_default_db_path
+    active_sync = bool(_SYNC_LOCK.locked() or res.get("running", False))
+    return {
+        **res,
+        "instance_token": instance_token,
+        "database_path": str(get_default_db_path()),
+        "active_sync": active_sync,
+    }
+
+
+@router.post("/shutdown")
+def shutdown_endpoint(request: Request) -> dict[str, Any]:
+    """Graceful shutdown endpoint for desktop launcher."""
+    verify_same_instance_authorization(request)
+
+    trigger_fn = getattr(request.app.state, "trigger_shutdown", None)
+    if trigger_fn is not None:
+        import threading
+        def _trigger() -> None:
+            import time
+            time.sleep(0.3)
+            try:
+                trigger_fn()
+            except Exception:
+                pass
+        threading.Thread(target=_trigger, daemon=True).start()
+    else:
+        # Fallback if running standalone or test environment
+        event = getattr(request.app.state, "shutdown_event", None)
+        if event is not None:
+            event.set()
+
+    return {"status": "shutting_down", "message": "AttendPlan server is stopping cleanly."}

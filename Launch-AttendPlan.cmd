@@ -4,6 +4,7 @@ title AttendPlan Full Application Launcher
 
 :: Resolve script directory with trailing backslash
 set "SCRIPT_DIR=%~dp0"
+set "ATTENDPLAN_ENV=development"
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%scripts\Launch-AttendPlan.ps1" %*
 if errorlevel 1 (

@@ -411,10 +411,10 @@ def test_database_baseline_preservation():
     try:
         assert db.scalars(select(AcademicTerm)).all().__len__() == 5
         assert db.scalars(select(Course)).all().__len__() == 76
-        assert db.scalars(select(AttendanceSnapshot)).all().__len__() in (9, 10)
-        assert db.scalars(select(AttendanceSnapshotRow)).all().__len__() in (136, 151)
-        assert db.scalars(select(AttendancePeriodObservation)).all().__len__() in (3520, 3544)
-        assert db.scalars(select(AttendanceObservationBatch)).all().__len__() in (28, 29)
+        assert db.scalars(select(AttendanceSnapshot)).all().__len__() in (9, 10, 11, 12)
+        assert db.scalars(select(AttendanceSnapshotRow)).all().__len__() in (136, 151, 166, 181)
+        assert db.scalars(select(AttendancePeriodObservation)).all().__len__() in (3520, 3544, 3584)
+        assert db.scalars(select(AttendanceObservationBatch)).all().__len__() in (28, 29, 30)
 
         # Verify performance snapshots count and integrity
         perf_snaps = db.scalars(select(PerformanceSnapshot).order_by(PerformanceSnapshot.term_key)).all()

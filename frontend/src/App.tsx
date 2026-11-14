@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { QueryClient, QueryClientProvider, useMutation, useQuery } from "@tanstack/react-query";
-import { Loader2, Shield } from "lucide-react";
+import { AlertTriangle, Loader2, RefreshCw, Shield } from "lucide-react";
 
 import { WorkspaceNav, type WorkspaceTab, normalizeTab } from "./components/WorkspaceNav";
 import { HomeView } from "./components/HomeView";
@@ -17,6 +17,7 @@ import { AuthenticationSettingsModal } from "./components/AuthenticationSettings
 import {
   API_BASE,
   fetchAcademicTerms,
+  fetchAuthSettings,
   fetchHealth,
   fetchTermAttendance,
 } from "./api/attendance";
@@ -39,6 +40,66 @@ const AttendanceDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("home");
   const [selectedCourseForSimulation, setSelectedCourseForSimulation] = useState<CourseRecord | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [showDiagnostics, setShowDiagnostics] = useState<boolean>(false);
+
+  const handleExitApp = async () => {
+    if (!window.confirm("Exit AttendPlan? This will stop the local background server process.")) {
+      return;
+    }
+    try {
+      const instanceToken = startupStatusQuery.data?.instance_token;
+      const headers: Record<string, string> = {};
+      if (instanceToken) {
+        headers["X-AttendPlan-Instance"] = instanceToken;
+      }
+      const res = await fetch(`${API_BASE}/api/v1/startup/shutdown`, {
+        method: "POST",
+        headers,
+      });
+
+      if (!res.ok) {
+        let errDetail = `Status ${res.status}`;
+        try {
+          const errJson = await res.json();
+          if (errJson && errJson.detail) {
+            errDetail = String(errJson.detail);
+          }
+        } catch {
+          // ignore json parse error
+        }
+        alert(`Shutdown authorization failed: ${errDetail}`);
+        return;
+      }
+
+      // Poll loopback status until connection is refused (server terminated and released port)
+      let serverStopped = false;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        try {
+          const check = await fetch(`${API_BASE}/api/v1/startup/status`, {
+            method: "GET",
+            headers,
+          });
+          if (!check.ok) {
+            serverStopped = true;
+            break;
+          }
+        } catch {
+          // Network error / connection refused indicates server has stopped and port is released
+          serverStopped = true;
+          break;
+        }
+      }
+
+      if (serverStopped) {
+        alert("AttendPlan server has stopped cleanly and released port. You can safely close this browser tab.");
+      } else {
+        alert("AttendPlan shutdown was requested. The background process is finalizing its exit.");
+      }
+    } catch (err: unknown) {
+      alert(`Unable to initiate server shutdown: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
 
   // 1. Health Query
   const healthQuery = useQuery({
@@ -72,6 +133,13 @@ const AttendanceDashboard: React.FC = () => {
       return res.json();
     },
     refetchInterval: 15000,
+  });
+
+  // 5. Authentication & Login Configuration Query
+  const authSettingsQuery = useQuery({
+    queryKey: ["auth-settings"],
+    queryFn: fetchAuthSettings,
+    staleTime: 60_000,
   });
 
   // Refresh Mutation
@@ -114,13 +182,14 @@ const AttendanceDashboard: React.FC = () => {
 
       {/* Institutional Header */}
       <Header
-        academicYear={termAttendance?.academic_year ?? "2026-2027"}
-        semester={termAttendance?.semester ?? 5}
-        className={termAttendance?.class_name ?? "B.Tech CSE AIML"}
+        academicYear={termAttendance?.academic_year ?? "—"}
+        semester={termAttendance?.semester ?? null}
+        className={termAttendance?.class_name ?? (terms.length > 0 ? "Academic Roster" : "AttendPlan")}
         targetPercentage={targetPercentage}
         onTargetChange={setTargetPercentage}
         isBackendHealthy={isBackendHealthy}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        onExit={handleExitApp}
       />
 
       {/* Authentication and Vault Settings Modal */}
@@ -143,7 +212,7 @@ const AttendanceDashboard: React.FC = () => {
                 {
                   home: "Attendance Overview",
                   attendance: "Attendance & Planning",
-                  performance: "Marks & Results",
+                  performance: "Performance",
                   settings: "Settings & Local Vault",
                 }[normalizedTab]
               }
@@ -153,7 +222,7 @@ const AttendanceDashboard: React.FC = () => {
                 {
                   home: "Instant standing, safe bunk margins, and quick class planning.",
                   attendance: "Subject rosters, 75% margins, simulation and attendance trends.",
-                  performance: "Continuous evaluation marks and assessment breakdowns across 5 semesters.",
+                  performance: "Internal assessments, continuous evaluations, and midterm marks.",
                   settings: "Private local storage, university session and credential vault.",
                 }[normalizedTab]
               }
@@ -168,13 +237,60 @@ const AttendanceDashboard: React.FC = () => {
         {/* Primary Four-Destination Navigation */}
         <WorkspaceNav activeTab={activeTab} onChange={(tab) => setActiveTab(tab)} />
 
-        {/* Handle Empty State: First-Run Onboarding */}
+        {/* Explicit State Handling */}
         {termsQuery.isLoading ? (
+          /* State A: QUERY_LOADING */
           <div className="h-96 flex flex-col items-center justify-center gap-3 text-slate-400">
             <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
             <p className="text-sm">Loading academic terms from local database...</p>
           </div>
+        ) : termsQuery.isError ? (
+          /* State B: QUERY_ERROR */
+          <div className="bg-slate-900 border border-amber-500/30 rounded-xl p-8 max-w-2xl mx-auto my-12 text-center space-y-4">
+            <div className="w-12 h-12 bg-amber-500/10 text-amber-400 rounded-full flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <h3 className="text-xl font-bold text-white">Could not load saved academic records.</h3>
+            <p className="text-sm text-slate-300 max-w-lg mx-auto">
+              {termsQuery.error instanceof Error
+                ? termsQuery.error.message.includes("403")
+                  ? "Local API security verification failed. The backend rejected access from this browser origin. Ensure backend is running in development mode (ATTENDPLAN_ENV=development) or launch via Launch-AttendPlan.cmd."
+                  : termsQuery.error.message
+                : "A network or communication error occurred while reading from the local AttendPlan database."}
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              <button
+                onClick={() => termsQuery.refetch()}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition"
+              >
+                <RefreshCw className="w-4 h-4" /> Retry
+              </button>
+              <button
+                onClick={() => setShowDiagnostics((prev) => !prev)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-sm font-medium transition"
+              >
+                {showDiagnostics ? "Hide Diagnostics" : "Diagnostics"}
+              </button>
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-sm font-medium transition"
+              >
+                Configure Authentication
+              </button>
+            </div>
+            {showDiagnostics && (
+              <div className="mt-4 p-4 bg-slate-950 border border-slate-800 rounded-lg text-left text-xs font-mono text-slate-400 space-y-1">
+                <div>Frontend Origin: {typeof window !== "undefined" ? window.location.origin : "unknown"}</div>
+                <div>Backend Health: {isBackendHealthy ? "Healthy (200 OK)" : "Unreachable or Failed"}</div>
+                <div>Backend Mode: {healthQuery.data && (healthQuery.data as any).mode ? (healthQuery.data as any).mode : "unknown"}</div>
+                <div>Backend Runtime: {healthQuery.data && (healthQuery.data as any).runtime ? (healthQuery.data as any).runtime : "unknown"}</div>
+                <div>Saved Mobile: {authSettingsQuery.data?.has_saved_mobile ? `Configured (${authSettingsQuery.data.masked_mobile})` : "None"}</div>
+                <div>Error Detail: {termsQuery.error instanceof Error ? termsQuery.error.message : String(termsQuery.error)}</div>
+              </div>
+            )}
+          </div>
         ) : terms.length === 0 ? (
+          /* State D: GENUINELY_EMPTY_ARCHIVE */
           <FirstRunOnboarding
             onComplete={() => {
               termsQuery.refetch();
@@ -183,6 +299,7 @@ const AttendanceDashboard: React.FC = () => {
             onOpenAuthModal={() => setIsAuthModalOpen(true)}
           />
         ) : (
+          /* State C / G: EXISTING_ARCHIVE_FOUND / DATA_AVAILABLE_OFFLINE */
           <>
             {/* Tab 1: HOME */}
             {normalizedTab === "home" && (
@@ -198,6 +315,7 @@ const AttendanceDashboard: React.FC = () => {
                 lastSyncTime={startupStatusQuery.data?.last_sync_time}
                 connectionState={startupStatusQuery.data?.state}
                 onOpenCourseSimulation={(course) => setSelectedCourseForSimulation(course)}
+                onOpenAuthModal={() => setIsAuthModalOpen(true)}
               />
             )}
 

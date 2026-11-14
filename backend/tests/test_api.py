@@ -118,6 +118,7 @@ class TestApiEndpoints:
             ("GET", "/api/v1/startup/status"),
             ("POST", "/api/v1/startup/connect"),
             ("POST", "/api/v1/startup/refresh-current"),
+            ("POST", "/api/v1/startup/shutdown"),
             ("GET", "/api/v1/performance/overview"),
             ("POST", "/api/v1/performance/preview"),
             ("POST", "/api/v1/performance/import"),
@@ -189,7 +190,7 @@ class TestApiEndpoints:
                         app_routes.add((m, r.path))
 
         assert app_routes == expected_endpoints
-        assert len(app_routes) == 74
+        assert len(app_routes) == 75
 
 
 

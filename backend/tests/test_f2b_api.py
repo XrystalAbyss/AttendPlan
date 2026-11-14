@@ -34,6 +34,7 @@ client = TestClient(app)
 @pytest.fixture(scope="module", autouse=True)
 def cleanup_temp_db():
     yield
+    app.dependency_overrides.pop(get_db, None)
     test_engine.dispose()
     if _temp_path.exists():
         try:
