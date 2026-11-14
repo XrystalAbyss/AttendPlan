@@ -4,7 +4,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 from urllib.parse import urljoin, urlsplit
@@ -47,7 +46,7 @@ def verified_term(db: Session, key: str) -> Any:
 def performance_overview(db: Session = Depends(get_db)) -> dict[str, Any]:
     data = overview(db)
     data["discovered_terms"] = HistoricalDiscoveryService(db).get_discovered_term_labels()
-    data["live_capture_enabled"] = False
+    data["live_capture_enabled"] = True
     return data
 
 
@@ -175,8 +174,6 @@ def extract_performance(term: Any, view: str) -> dict[str, Any]:
 
 @router.post("/import")
 def capture_performance(payload: PerformanceRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
-    if os.environ.get("ATTENDPLAN_ENABLE_PERFORMANCE_PILOT") != "1":
-        raise HTTPException(409, "Performance import is disabled pending pilot approval.")
     term = verified_term(db, payload.term_key)
     job = db.get(SyncJob, payload.approval_id) if payload.approval_id else None
     expected_scope = approval_scope(payload)

@@ -40,6 +40,17 @@ const AttendanceDashboard: React.FC = () => {
   const [selectedCourseForSimulation, setSelectedCourseForSimulation] = useState<CourseRecord | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
 
+  const handleExitApp = async () => {
+    if (window.confirm("Exit AttendPlan? This will stop the local background server process.")) {
+      try {
+        await fetch(`${API_BASE}/api/v1/startup/shutdown`, { method: "POST" });
+        alert("AttendPlan server has stopped. You can safely close this browser tab.");
+      } catch {
+        alert("AttendPlan server shutdown initiated.");
+      }
+    }
+  };
+
   // 1. Health Query
   const healthQuery = useQuery({
     queryKey: ["health"],
@@ -114,13 +125,14 @@ const AttendanceDashboard: React.FC = () => {
 
       {/* Institutional Header */}
       <Header
-        academicYear={termAttendance?.academic_year ?? "2026-2027"}
-        semester={termAttendance?.semester ?? 5}
-        className={termAttendance?.class_name ?? "B.Tech CSE AIML"}
+        academicYear={termAttendance?.academic_year ?? "—"}
+        semester={termAttendance?.semester ?? null}
+        className={termAttendance?.class_name ?? (terms.length > 0 ? "Academic Roster" : "AttendPlan")}
         targetPercentage={targetPercentage}
         onTargetChange={setTargetPercentage}
         isBackendHealthy={isBackendHealthy}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        onExit={handleExitApp}
       />
 
       {/* Authentication and Vault Settings Modal */}
@@ -143,7 +155,7 @@ const AttendanceDashboard: React.FC = () => {
                 {
                   home: "Attendance Overview",
                   attendance: "Attendance & Planning",
-                  performance: "Marks & Results",
+                  performance: "Performance",
                   settings: "Settings & Local Vault",
                 }[normalizedTab]
               }
@@ -153,7 +165,7 @@ const AttendanceDashboard: React.FC = () => {
                 {
                   home: "Instant standing, safe bunk margins, and quick class planning.",
                   attendance: "Subject rosters, 75% margins, simulation and attendance trends.",
-                  performance: "Continuous evaluation marks and assessment breakdowns across 5 semesters.",
+                  performance: "Internal assessments, continuous evaluations, and midterm marks.",
                   settings: "Private local storage, university session and credential vault.",
                 }[normalizedTab]
               }
@@ -198,6 +210,7 @@ const AttendanceDashboard: React.FC = () => {
                 lastSyncTime={startupStatusQuery.data?.last_sync_time}
                 connectionState={startupStatusQuery.data?.state}
                 onOpenCourseSimulation={(course) => setSelectedCourseForSimulation(course)}
+                onOpenAuthModal={() => setIsAuthModalOpen(true)}
               />
             )}
 

@@ -160,3 +160,19 @@ def refresh_current_endpoint() -> dict[str, Any]:
 @router.get("/status")
 def status() -> dict[str, Any]:
     return coordinator.status()
+
+
+@router.post("/shutdown")
+def shutdown_endpoint() -> dict[str, Any]:
+    """Graceful shutdown endpoint for desktop launcher."""
+    import threading
+    def _trigger() -> None:
+        import time
+        time.sleep(0.5)
+        try:
+            import launcher
+            launcher.SHUTDOWN_EVENT.set()
+        except Exception:
+            pass
+    threading.Thread(target=_trigger, daemon=True).start()
+    return {"status": "shutting_down", "message": "AttendPlan server is stopping cleanly."}

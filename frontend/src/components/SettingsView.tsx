@@ -518,7 +518,7 @@ export const SettingsView: React.FC<{
           AttendPlan is a private, local-first university attendance intelligence application designed to help students track and plan their attendance under an institutional 75% requirement. Student credentials and attendance records never leave your local machine.
         </p>
         <div className="flex flex-wrap items-center justify-between pt-2 border-t border-slate-800 text-[11px] text-slate-500">
-          <span>Version: 0.1.0-beta.3 (Supervised Friends Beta)</span>
+          <span>Version: 0.1.0-beta.4 (Supervised Friends Beta)</span>
           <span>Security: DPAPI Credential Vault &bull; IPv4 Loopback Binding</span>
         </div>
       </section>

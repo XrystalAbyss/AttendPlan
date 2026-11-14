@@ -1,10 +1,10 @@
 # AttendPlan
 
-> **AttendPlan v0.1.0-beta.3 — Friends Beta & Packaging Release (November 2026)**  
+> **AttendPlan v0.1.0-beta.4 — Real Beta Recovery & Hotfix Release (November 2026)**  
 > **Local-First University Attendance Intelligence Application**  
 > Helping students manage a 75% subject-wise attendance requirement with exact mathematics, zero credential capture, and air-gapped local privacy.
 >
-> 🛡️ **Verified Quality Gates:** 342 Python unit & domain tests, 38 Vitest frontend tests, 74 API endpoints, 100% strict typing (`mypy` / `tsc`), zero student PII leaks, and standalone Windows Inno Setup installer.
+> 🛡️ **Verified Quality Gates:** 346 Python unit & domain tests, 38 Vitest frontend tests, 75 API endpoints, 100% strict typing (`mypy` / `tsc`), zero student PII leaks, and standalone Windows Inno Setup installer.
 
 ---
 
@@ -94,7 +94,7 @@ AttendPlan/
 ### 4.1 Windows Installer (For Students)
 
 For students and nontechnical users, download the latest packaged installer from the release assets:
-- **Installer**: `AttendPlan-0.1.0-beta.3-Setup.exe`
+- **Installer**: `AttendPlan-0.1.0-beta.4-Setup.exe`
 - **Installation Scope**: Installs to `%LOCALAPPDATA%\Programs\AttendPlan` without requiring Windows administrator privileges.
 - **Includes**: Standalone bundled Python backend executable and pre-built React frontend assets. No external Python, Node.js, or Git installation required.
 
@@ -117,11 +117,11 @@ AttendPlan provides two double-clickable `.cmd` launchers in the repository root
 .\run-tests.ps1
 ```
 Executes all quality gates:
-1. Backend tests (`pytest`): 342 passed (100%).
+1. Backend tests (`pytest`): 346 passed (100%).
 2. Security & Sanitization (`pytest test_sanitization.py`): 0 PII leaks, 0 credentials.
 3. Static typing (`mypy`): 0 issues across 47 source files.
 4. Linting (`ruff`): All checks passed (0 errors).
 5. Frontend typing (`tsc --noEmit`): 0 errors.
 6. Frontend tests (`vitest`): 38 passed across 13 test files (100%).
-7. Frontend production build (`npm run build`): Clean production bundle (129 kB gzipped).
-Total automated tests: **380 passed**.
+7. Frontend production build (`npm run build`): Clean production bundle (123 kB gzipped).
+Total automated tests: **384 passed**.

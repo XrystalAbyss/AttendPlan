@@ -2,9 +2,9 @@
 ; Produces a per-user, non-administrative Windows installer (.exe)
 
 #define MyAppName "AttendPlan"
-#define MyAppVersion "0.1.0-beta.3"
+#define MyAppVersion "0.1.0-beta.4"
 #define MyAppPublisher "AttendPlan Team"
-#define MyAppURL "https://github.com/attendplan/attendplan"
+#define MyAppURL "https://github.com/XrystalAbyss/AttendPlan"
 #define MyAppExeName "AttendPlan.exe"
 #define MySourceDir "..\dist\AttendPlan"
 

@@ -140,7 +140,9 @@ export const PerformanceView: React.FC = () => {
             Internal Assessments &amp; Continuous Evaluation
           </h2>
           <p className="text-xs text-slate-400 mt-1 m-0">
-            Archived continuous evaluation assessments across 5 academic terms. Preserves authentic university scores.
+            {allTerms.length > 0
+              ? `Archived continuous evaluation assessments across ${allTerms.length} ${allTerms.length === 1 ? "term" : "terms"}. Preserves authentic university scores.`
+              : "Archived continuous evaluation assessments and examination marks. Preserves authentic university scores."}
           </p>
         </div>
 
@@ -193,10 +195,13 @@ export const PerformanceView: React.FC = () => {
 
       {query.data?.terms.length === 0 && (
         <div className="p-8 text-center bg-slate-900/60 border border-slate-800 rounded-xl space-y-2">
-          <p className="text-sm font-medium text-slate-300 m-0">
-            No marks or semester results have been imported. Attendance records are separate.
+          <p className="text-base font-semibold text-slate-200 m-0">
+            No assessments imported yet
           </p>
-          <p className="text-xs text-slate-400 m-0">
+          <p className="text-xs text-slate-400 m-0 max-w-lg mx-auto">
+            No marks or semester results have been imported. Attendance records are separate and unaffected.
+          </p>
+          <p className="text-xs text-slate-500 m-0">
             Use the discovery flow below if you wish to review available university examination scopes.
           </p>
         </div>
