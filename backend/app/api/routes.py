@@ -152,14 +152,13 @@ def get_health() -> dict[str, Any]:
     """Health check endpoint confirming backend operational status."""
     is_frozen = getattr(sys, "frozen", False)
     env_mode = "development" if os.environ.get("ATTENDPLAN_ENV", "").lower() == "development" else "production"
-    from app.db.session import get_default_db_path
     return {
         "status": "healthy",
         "app": "AttendPlan",
-        "version": "0.1.0-beta.7",
+        "version": "0.1.0-beta.8",
         "mode": env_mode,
         "runtime": "frozen" if is_frozen else "source",
-        "database_path": str(get_default_db_path()),
+        "database_status": "connected",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {
+  AlertTriangle,
   ArrowRight,
   CheckCircle2,
   ExternalLink,
@@ -42,14 +43,29 @@ export const FirstRunOnboarding: React.FC<Props> = ({ onComplete, onOpenAuthModa
   const [rememberMobile, setRememberMobile] = useState(true);
   const [mobileError, setMobileError] = useState<string | null>(null);
   const [isSavingMobile, setIsSavingMobile] = useState(false);
+  const [settingsLoadState, setSettingsLoadState] = useState<"loading" | "saved_found" | "empty" | "unavailable">("loading");
+  const [settingsErrorMessage, setSettingsErrorMessage] = useState<string | null>(null);
+
+  const loadAuthSettings = async () => {
+    setSettingsLoadState("loading");
+    setSettingsErrorMessage(null);
+    try {
+      const s = await fetchAuthSettings();
+      setSavedSettings(s);
+      if (s?.has_saved_mobile) {
+        setSettingsLoadState("saved_found");
+      } else {
+        setSettingsLoadState("empty");
+      }
+    } catch (err: any) {
+      setSettingsLoadState("unavailable");
+      setSettingsErrorMessage(err.message || "Unable to contact local settings service.");
+    }
+  };
 
   // Initial load of existing settings
   useEffect(() => {
-    fetchAuthSettings()
-      .then((s) => {
-        setSavedSettings(s);
-      })
-      .catch(() => {});
+    loadAuthSettings();
   }, []);
 
   // Step 3: MFA Choice state
@@ -133,12 +149,17 @@ export const FirstRunOnboarding: React.FC<Props> = ({ onComplete, onOpenAuthModa
         mobile_number: cleaned,
         auto_mobile_autofill: rememberMobile,
       });
+      // Verified read-back
       const verified = await fetchAuthSettings();
+      if (!verified?.has_saved_mobile) {
+        throw new Error("Settings save verification failed: local vault did not confirm saved state.");
+      }
       setSavedSettings(verified);
+      setSettingsLoadState("saved_found");
       setIsEditingMobile(false);
       setStep(3);
     } catch (err: any) {
-      setMobileError(err.message || "Failed to save mobile settings.");
+      setMobileError(err.message || "Failed to persist mobile settings.");
     } finally {
       setIsSavingMobile(false);
     }
@@ -341,7 +362,29 @@ export const FirstRunOnboarding: React.FC<Props> = ({ onComplete, onOpenAuthModa
               Your university student portal (iCloudEMS Keycloak) uses your registered 10-digit mobile number as the username to send SMS OTPs or request Authenticator codes.
             </p>
 
-            {savedSettings?.has_saved_mobile && !isEditingMobile ? (
+            {settingsLoadState === "loading" ? (
+              <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl flex items-center justify-center gap-2 text-xs text-slate-400">
+                <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+                Reading local authentication settings...
+              </div>
+            ) : settingsLoadState === "unavailable" ? (
+              <div className="p-3.5 bg-amber-950/40 border border-amber-800/80 rounded-xl space-y-2 text-xs">
+                <div className="flex items-center gap-2 text-amber-300 font-semibold">
+                  <AlertTriangle className="w-4 h-4 text-amber-400" />
+                  Local Settings Unavailable
+                </div>
+                <p className="text-slate-300 m-0">
+                  Could not verify existing authentication configuration ({settingsErrorMessage}). Your local data was NOT deleted.
+                </p>
+                <button
+                  type="button"
+                  onClick={loadAuthSettings}
+                  className="px-3 py-1 bg-amber-900/50 hover:bg-amber-800/70 text-amber-200 border border-amber-700/60 rounded text-xs font-medium inline-flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Retry Reading Settings
+                </button>
+              </div>
+            ) : savedSettings?.has_saved_mobile && !isEditingMobile ? (
               <div className="p-3.5 bg-emerald-950/40 border border-emerald-800/70 rounded-xl space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="flex items-center gap-2 text-emerald-300 font-semibold text-xs">

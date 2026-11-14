@@ -18,7 +18,7 @@ client = TestClient(app)
 
 
 def test_health_endpoint_contract():
-    """Verify /health exposes mode, runtime, database_path and no sensitive tokens."""
+    """Verify /health exposes mode, runtime, database_status and no personal paths or sensitive tokens."""
     res = client.get("/health")
     assert res.status_code == 200
     data = res.json()
@@ -27,11 +27,18 @@ def test_health_endpoint_contract():
     assert data["mode"] in ("development", "production")
     assert "runtime" in data
     assert data["runtime"] in ("source", "frozen")
-    assert "database_path" in data
-    # Ensure no secrets leaked
+    assert data.get("database_status") == "connected"
+    # Ensure personal filesystem paths and secrets are NOT exposed
+    assert "database_path" not in data
     assert "instance_token" not in data
     assert "cookie" not in data
     assert "password" not in data
+
+    # Verify diagnostic status endpoint preserves database_path safely
+    res_status = client.get("/api/v1/startup/status")
+    assert res_status.status_code == 200
+    status_data = res_status.json()
+    assert "database_path" in status_data
 
 
 def test_development_mode_allows_dev_origins_on_terms(monkeypatch):

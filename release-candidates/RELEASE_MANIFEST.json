@@ -1,9 +1,9 @@
 {
   "product": "AttendPlan",
-  "version": "0.1.0-beta.7",
+  "version": "0.1.0-beta.8",
   "target_platform": "win32-x64",
   "architecture": "x64",
-  "build_timestamp": "2026-11-14T13:13:33Z",
+  "build_timestamp": "2026-11-14T20:10:18Z",
   "artifacts": [
     {
       "filename": "AttendPlan-0.1.0-beta.1-Setup.exe",
@@ -95,7 +95,7 @@
       "sha256": "31f3a966681297b0959dd4fc9d10e04160a041d363aacc7750d3bbf1ed38c1d4",
       "privileges_required": "lowest",
       "default_install_dir": "%LOCALAPPDATA%\\AttendPlan\\app",
-      "status": "ACTIVE_FRIENDS_BETA_CANDIDATE",
+      "status": "ROLLBACK_CANDIDATE",
       "improvements": [
         "Production same-origin security enforcement: restricts /api/ access strictly to the dynamically bound application origin (e.g. 127.0.0.1:<bound_port>), blocking unrelated localhost ports (e.g. 8001) and external domains",
         "Dynamic CORS header management in LocalOriginSecurityMiddleware: attaches Access-Control-Allow-Origin dynamically strictly to verified allowed origins, preventing cross-origin token exposure",
@@ -103,6 +103,27 @@
         "Deterministic Exit UX in frontend/src/App.tsx: verifies shutdown response status, handles authorization failures gracefully, and polls loopback status until port release is confirmed before advising browser closure",
         "Local storage optimization: removed obsolete beta.1, beta.2, and beta.3 installers and cleared packaging build caches, reclaiming 272.12 MB of local disk space",
         "Expanded negative security tests in test_launcher_and_shutdown.py covering origin isolation, dev mode switching, OPTIONS preflight, dynamic port binding, and Referer verification"
+      ]
+    },
+    {
+      "filename": "AttendPlan-0.1.0-beta.8-Setup.exe",
+      "version": "0.1.0-beta.8",
+      "type": "Inno Setup Installer (User Mode - Full Lifecycle & Maintenance Uninstaller)",
+      "size_bytes": 81655495,
+      "sha256": "4e6032591c54cf7f5615beb2fd5795880b6f1f348246b9c6e46e9444b53f34cc",
+      "privileges_required": "lowest",
+      "default_install_dir": "%APPDATA%\\AttendPlan\\app",
+      "status": "ACTIVE_FRIENDS_BETA_CANDIDATE",
+      "improvements": [
+        "Windows installation lifecycle: native Inno Setup AppMutex (AttendPlanDesktopAppMutex) running instance detection",
+        "In-place upgrade preserving existing academic database, courses, snapshots, and authentication settings",
+        "Downgrade prevention warning to prevent accidental schema incompatibilities",
+        "Guarded uninstallation: default keep academic data, with secondary confirmation and safety backup before any purge",
+        "Interactive Maintenance & Storage Reset Utility (AttendPlan-Maintenance.cmd / .ps1) with SQLite integrity checks, immediate backups, and cache cleanup",
+        "CLI maintenance flags on AttendPlan.exe (--check-db, --backup-db <dest>) for zero-dependency local troubleshooting",
+        "Safe runtime switching in Launch-AttendPlan.ps1 with conflict diagnosis, active sync job protection, and explicit user confirmation",
+        "Settings recovery state machine in FirstRunOnboarding.tsx distinguishing loading, saved_found, empty, and unavailable states with verified read-back",
+        "Sanitized unauthenticated /health endpoint removing raw personal filesystem paths and surfacing database_status: 'connected'"
       ]
     }
   ]

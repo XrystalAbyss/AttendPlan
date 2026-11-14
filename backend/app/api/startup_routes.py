@@ -211,7 +211,14 @@ def status(request: Request) -> dict[str, Any]:
 
     res = coordinator.status()
     instance_token = getattr(request.app.state, "instance_token", None)
-    return {**res, "instance_token": instance_token}
+    from app.db.session import get_default_db_path
+    active_sync = bool(_SYNC_LOCK.locked() or res.get("running", False))
+    return {
+        **res,
+        "instance_token": instance_token,
+        "database_path": str(get_default_db_path()),
+        "active_sync": active_sync,
+    }
 
 
 @router.post("/shutdown")

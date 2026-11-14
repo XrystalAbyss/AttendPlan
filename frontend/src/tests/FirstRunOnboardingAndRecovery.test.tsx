@@ -99,4 +99,77 @@ describe("FirstRunOnboarding and Recovery", () => {
     await screen.findByText(/Authenticator & Multi-Factor Setup/i);
     expect(screen.getByText(/Continue to Portal/i)).toBeInTheDocument();
   });
+
+  it("displays settings unavailable alert and retry button when fetchAuthSettings fails", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("/api/v1/auth/settings")) {
+        return {
+          ok: false,
+          status: 500,
+          json: async () => ({ detail: "Settings vault unreachable" }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWithClient(
+      <FirstRunOnboarding
+        onComplete={() => {}}
+        onOpenAuthModal={() => {}}
+      />
+    );
+
+    fireEvent.click(await screen.findByText(/Configure Setup/i));
+
+    // Step 2 should display Settings Unavailable instead of empty input
+    await screen.findByText("Local Settings Unavailable");
+    expect(screen.getByText(/Could not verify existing authentication configuration/i)).toBeInTheDocument();
+    expect(screen.getByText(/Retry Reading Settings/i)).toBeInTheDocument();
+  });
+
+  it("verifies read-back after saving mobile and advances on success", async () => {
+    let saved = false;
+    const fetchMock = vi.fn().mockImplementation(async (url: string, opts?: any) => {
+      if (url.includes("/api/v1/auth/settings")) {
+        if (opts?.method === "POST") {
+          saved = true;
+          return { ok: true, json: async () => ({}) };
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            has_saved_mobile: saved,
+            masked_mobile: saved ? "******1234" : null,
+            auto_mobile_autofill: false,
+            auto_login_continuation: false,
+            auto_totp_autofill: false,
+            auto_totp_submit: false,
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWithClient(
+      <FirstRunOnboarding
+        onComplete={() => {}}
+        onOpenAuthModal={() => {}}
+      />
+    );
+
+    fireEvent.click(await screen.findByText(/Configure Setup/i));
+
+    // Input mobile number
+    const input = await screen.findByLabelText(/10-Digit Mobile Number/i);
+    fireEvent.change(input, { target: { value: "9876541234" } });
+
+    // Click Save & Continue
+    const nextBtn = screen.getByText(/Save & Continue/i);
+    fireEvent.click(nextBtn);
+
+    // Should advance to Authenticator & Multi-Factor Setup
+    await screen.findByText(/Authenticator & Multi-Factor Setup/i);
+  });
 });

@@ -25,12 +25,31 @@ BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-APP_VERSION = "0.1.0-beta.7"
+APP_VERSION = "0.1.0-beta.8"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 
 # Global shutdown event triggered by API or keyboard interrupt
 SHUTDOWN_EVENT = threading.Event()
+_APP_MUTEX_HANDLE: Any = None
+
+
+def acquire_app_mutex() -> bool:
+    """Acquire single-instance named Win32 mutex for Inno Setup and process tracking."""
+    global _APP_MUTEX_HANDLE
+    if sys.platform != "win32":
+        return True
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        mutex_name = "AttendPlanDesktopAppMutex"
+        handle = kernel32.CreateMutexW(None, False, mutex_name)
+        if handle:
+            _APP_MUTEX_HANDLE = handle
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def safe_print(*args: Any, **kwargs: Any) -> None:
@@ -251,6 +270,17 @@ def run_launcher() -> int:
         action="store_true",
         help="Check if an AttendPlan instance is already running",
     )
+    parser.add_argument(
+        "--check-db",
+        action="store_true",
+        help="Perform SQLite integrity check and inspect academic counts, then exit",
+    )
+    parser.add_argument(
+        "--backup-db",
+        type=str,
+        metavar="DEST",
+        help="Create a consistent SQLite backup to DEST, print SHA-256, and exit",
+    )
 
     args = parser.parse_args()
 
@@ -258,8 +288,69 @@ def run_launcher() -> int:
         safe_print(f"AttendPlan {APP_VERSION}")
         return 0
 
+    if args.check_db:
+        import sqlite3
+        from app.db.session import get_default_db_path
+        db_path = get_default_db_path()
+        if not db_path.exists():
+            safe_print(f"DATABASE_NOT_FOUND: {db_path}")
+            return 1
+        safe_print(f"Database File: {db_path}")
+        safe_print(f"File Size: {db_path.stat().st_size} bytes")
+        conn = sqlite3.connect(str(db_path))
+        try:
+            cur = conn.cursor()
+            cur.execute("PRAGMA integrity_check")
+            integrity = cur.fetchall()
+            safe_print(f"Integrity Check: {integrity}")
+            cur.execute("SELECT count(*) FROM academic_terms")
+            terms = cur.fetchone()[0]
+            cur.execute("SELECT count(*) FROM courses")
+            courses = cur.fetchone()[0]
+            cur.execute("SELECT count(*) FROM attendance_period_observations")
+            obs = cur.fetchone()[0]
+            cur.execute("SELECT count(*) FROM performance_snapshots")
+            perf = cur.fetchone()[0]
+            cur.execute("SELECT count(*) FROM attendance_snapshots")
+            att_snaps = cur.fetchone()[0]
+            safe_print(f"Academic Terms: {terms}")
+            safe_print(f"Courses: {courses}")
+            safe_print(f"Observations: {obs}")
+            safe_print(f"Performance Snapshots: {perf}")
+            safe_print(f"Attendance Snapshots: {att_snaps}")
+        finally:
+            conn.close()
+        return 0
+
+    if args.backup_db:
+        import hashlib
+        import sqlite3
+        from app.db.session import get_default_db_path
+        db_path = get_default_db_path()
+        if not db_path.exists():
+            safe_print(f"ERROR: Source database not found at {db_path}")
+            return 1
+        dest = Path(args.backup_db).resolve()
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        src_conn = sqlite3.connect(str(db_path))
+        dst_conn = sqlite3.connect(str(dest))
+        try:
+            src_conn.backup(dst_conn)
+        finally:
+            dst_conn.close()
+            src_conn.close()
+        h = hashlib.sha256()
+        with open(dest, "rb") as f:
+            while chunk := f.read(65536):
+                h.update(chunk)
+        safe_print(f"BACKUP_SUCCESS: {dest}")
+        safe_print(f"SHA256: {h.hexdigest()}")
+        safe_print(f"SIZE: {dest.stat().st_size} bytes")
+        return 0
+
     logger = setup_desktop_logging()
     logger.info("AttendPlan Desktop Launcher initializing (v%s)", APP_VERSION)
+    acquire_app_mutex()
 
     target_port = args.port
 
@@ -377,6 +468,14 @@ def run_launcher() -> int:
         except Exception as exc:
             logger.warning("Error closing database engine: %s", exc)
         logger.info("AttendPlan stopped cleanly.")
+        global _APP_MUTEX_HANDLE
+        if _APP_MUTEX_HANDLE:
+            try:
+                import ctypes
+                ctypes.windll.kernel32.CloseHandle(_APP_MUTEX_HANDLE)  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            _APP_MUTEX_HANDLE = None
 
     return 0
 
