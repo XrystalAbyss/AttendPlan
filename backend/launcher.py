@@ -25,7 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-APP_VERSION = "0.1.0-beta.9"
+APP_VERSION = "0.1.0-beta.10"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 
@@ -33,6 +33,16 @@ DEFAULT_PORT = 8000
 SHUTDOWN_EVENT = threading.Event()
 _APP_MUTEX_HANDLE: Any = None
 ERROR_ALREADY_EXISTS = 183
+
+
+def safe_print(*args: Any, **kwargs: Any) -> None:
+    """Print safely without raising when stdout is None in Windows windowed mode."""
+    if sys.stdout is not None and hasattr(sys.stdout, "write"):
+        try:
+            print(*args, **kwargs)
+            sys.stdout.flush()
+        except Exception:
+            pass
 
 
 def acquire_app_mutex() -> tuple[bool, bool]:
@@ -92,6 +102,90 @@ def release_app_mutex() -> None:
         _APP_MUTEX_HANDLE = None
 
 
+class ResetStatus:
+    SUCCESS = "SUCCESS"
+    CANCELLED = "CANCELLED"
+    BACKUP_FAILED = "BACKUP_FAILED"
+    VAULT_FAILED = "VAULT_FAILED"
+    APP_RUNNING = "APP_RUNNING"
+    DELETION_PARTIAL = "DELETION_PARTIAL"
+    INVALID_PATH = "INVALID_PATH"
+    UNEXPECTED_ERROR = "UNEXPECTED_ERROR"
+
+
+RESET_EXIT_CODES = {
+    ResetStatus.SUCCESS: 0,
+    ResetStatus.CANCELLED: 2,
+    ResetStatus.BACKUP_FAILED: 3,
+    ResetStatus.VAULT_FAILED: 4,
+    ResetStatus.APP_RUNNING: 5,
+    ResetStatus.DELETION_PARTIAL: 6,
+    ResetStatus.INVALID_PATH: 7,
+    ResetStatus.UNEXPECTED_ERROR: 8,
+}
+
+
+def get_canonical_app_data_dir() -> Path:
+    """Resolve the immutable canonical application data directory for AttendPlan.
+
+    Adheres strictly to %LOCALAPPDATA%\\AttendPlan on Windows (or ~/.attendplan on Unix).
+    Ignores non-canonical runtime overrides like ATTENDPLAN_DB_PATH for production resets.
+    """
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data and sys.platform == "win32":
+        return (Path(local_app_data) / "AttendPlan").resolve()
+    return (Path.home() / ".attendplan").resolve()
+
+
+def is_reparse_point_or_symlink(path: Path) -> bool:
+    """Detect if a path is a symbolic link or Windows reparse point (junction)."""
+    if path.is_symlink():
+        return True
+    if sys.platform == "win32" and path.exists():
+        try:
+            import ctypes
+
+            attrs = ctypes.windll.kernel32.GetFileAttributesW(str(path))
+            # FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+            if attrs != -1 and (attrs & 0x400):
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def is_app_or_db_active(db_path: Path) -> tuple[bool, str]:
+    """Check if AttendPlan is actively running or holding an exclusive lock on the database."""
+    import sqlite3
+
+    if sys.platform == "win32":
+        is_owner, already_exists = acquire_app_mutex()
+        if already_exists:
+            return True, "Another AttendPlan instance holds the application named mutex"
+        if is_owner:
+            release_app_mutex()
+
+    # Check if server port is responding
+    if is_server_healthy("127.0.0.1", DEFAULT_PORT):
+        return True, f"AttendPlan server is actively responding on loopback port {DEFAULT_PORT}"
+
+    # Check if SQLite database file is locked
+    if db_path.exists():
+        try:
+            conn = sqlite3.connect(str(db_path), timeout=0.2)
+            try:
+                conn.execute("BEGIN EXCLUSIVE")
+                conn.rollback()
+            finally:
+                conn.close()
+        except sqlite3.OperationalError as e:
+            return True, f"Database file is actively locked by another process: {e}"
+        except Exception:
+            pass
+
+    return False, ""
+
+
 def inspect_database_file(db_file: Path) -> int:
     """Perform integrity check and count academic entities in a SQLite database file."""
     import sqlite3
@@ -138,21 +232,85 @@ def inspect_database_file(db_file: Path) -> int:
     return 0
 
 
-def perform_safe_backup(dest_path_str: str) -> int:
-    """Create a verified SQLite online backup of the application database."""
-    import hashlib
-    import sqlite3
-    from app.db.session import get_default_db_path
+class BackupResult(int):
+    """Exit code int subclass carrying backup file path and sha256 hash."""
 
-    db_path = get_default_db_path().resolve()
+    path: Path | None
+    sha256: str | None
+
+    def __new__(cls, rc: int, path: Path | None = None, sha256: str | None = None):
+        obj = super().__new__(cls, rc)
+        obj.path = path
+        obj.sha256 = sha256
+        return obj
+
+    def __iter__(self):
+        yield int(self)
+        yield self.path
+        yield self.sha256
+
+
+def is_custom_root_allowed() -> bool:
+    """Check if custom test/sandbox root directory overrides are permitted."""
+    return os.environ.get("ATTENDPLAN_ALLOW_CUSTOM_ROOT") == "1"
+
+
+def perform_safe_backup(
+    dest_path_str: str,
+    source_db_path: Path | None = None,
+    allow_custom_source: bool = False,
+) -> BackupResult:
+    """Create a verified SQLite online backup of the application database.
+
+    Returns:
+        BackupResult: exit code int with .path and .sha256, also iterable as (rc, path, sha256).
+    """
+    import hashlib
+    from datetime import datetime
+    import sqlite3
+
+    custom_allowed = allow_custom_source or is_custom_root_allowed()
+    if source_db_path and custom_allowed:
+        db_path = source_db_path.resolve()
+        app_data_dir = db_path.parent.resolve()
+    elif custom_allowed and os.environ.get("ATTENDPLAN_DB_PATH"):
+        db_path = Path(os.environ["ATTENDPLAN_DB_PATH"]).resolve()
+        app_data_dir = db_path.parent.resolve()
+    else:
+        app_data_dir = get_canonical_app_data_dir()
+        db_path = (app_data_dir / "attendplan.sqlite3").resolve()
+
     if not db_path.exists():
         safe_print(f"ERROR: Source database not found at {db_path}")
-        return 1
+        return BackupResult(1, None, None)
 
-    dest = Path(dest_path_str).resolve()
+    dest_input = Path(dest_path_str).resolve()
+    # If destination is an existing directory or ends with a slash/backslash, generate unique timestamped filename
+    if dest_input.is_dir() or dest_path_str.endswith(("\\", "/")):
+        dest_input.mkdir(parents=True, exist_ok=True)
+        dest = dest_input / f"AttendPlan_Backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sqlite3"
+    else:
+        dest = dest_input
+
+    # Safety checks
     if dest == db_path:
         safe_print(f"ERROR: Destination path collision: source and destination are identical ({dest})")
-        return 1
+        return BackupResult(1, None, None)
+
+    # Overwrite prohibition: destination file must not already exist
+    if dest.exists() and dest.is_file():
+        safe_print(f"ERROR: Destination backup file already exists at {dest}. Overwrite prohibited.")
+        return BackupResult(1, None, None)
+
+    # Check if destination is inside app_data_dir deletion scope
+    try:
+        if dest.is_relative_to(app_data_dir):
+            safe_print(f"ERROR: Backup destination cannot be inside the application data directory ({app_data_dir})")
+            return BackupResult(1, None, None)
+    except AttributeError:
+        if str(dest).startswith(str(app_data_dir)):
+            safe_print(f"ERROR: Backup destination cannot be inside the application data directory ({app_data_dir})")
+            return BackupResult(1, None, None)
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -166,7 +324,7 @@ def perform_safe_backup(dest_path_str: str) -> int:
 
         if not dest.exists() or dest.stat().st_size == 0:
             safe_print(f"ERROR: Backup file was not created or is zero bytes at {dest}")
-            return 1
+            return BackupResult(1, None, None)
 
         # Verify backup integrity
         b_conn = sqlite3.connect(str(dest))
@@ -176,7 +334,7 @@ def perform_safe_backup(dest_path_str: str) -> int:
             b_integ = b_cur.fetchall()
             if b_integ != [("ok",)]:
                 safe_print(f"ERROR: Backup failed PRAGMA integrity_check: {b_integ}")
-                return 1
+                return BackupResult(1, None, None)
 
             # Compare record counts between source and backup
             s_conn = sqlite3.connect(str(db_path))
@@ -186,36 +344,48 @@ def perform_safe_backup(dest_path_str: str) -> int:
                     "academic_terms",
                     "courses",
                     "attendance_period_observations",
+                    "attendance_observation_batches",
+                    "attendance_snapshots",
+                    "attendance_snapshot_rows",
                     "performance_snapshots",
                 ]:
-                    s_cnt = s_cur.execute(f"SELECT count(*) FROM {tbl}").fetchone()[0]
-                    b_cnt = b_cur.execute(f"SELECT count(*) FROM {tbl}").fetchone()[0]
-                    if s_cnt != b_cnt:
-                        safe_print(
-                            f"ERROR: Record count mismatch in table {tbl}: source={s_cnt}, backup={b_cnt}"
-                        )
-                        return 1
+                    t_exists = s_cur.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                        (tbl,),
+                    ).fetchone()
+                    if t_exists:
+                        s_cnt = s_cur.execute(f"SELECT count(*) FROM {tbl}").fetchone()[0]
+                        b_cnt = b_cur.execute(f"SELECT count(*) FROM {tbl}").fetchone()[0]
+                        if s_cnt != b_cnt:
+                            safe_print(
+                                f"ERROR: Record count mismatch in table {tbl}: source={s_cnt}, backup={b_cnt}"
+                            )
+                            return BackupResult(1, None, None)
             finally:
                 s_conn.close()
         finally:
             b_conn.close()
     except (sqlite3.Error, Exception) as exc:
         safe_print(f"ERROR: Backup creation or verification failed: {exc}")
-        return 1
+        return BackupResult(1, None, None)
 
     h = hashlib.sha256()
     with open(dest, "rb") as f:
         while chunk := f.read(65536):
             h.update(chunk)
+    sha_hash = h.hexdigest()
 
     safe_print(f"BACKUP_VERIFIED: {dest}")
-    safe_print(f"SHA256: {h.hexdigest()}")
+    safe_print(f"SHA256: {sha_hash}")
     safe_print(f"SIZE: {dest.stat().st_size} bytes")
-    return 0
+    return BackupResult(0, dest, sha_hash)
 
 
 def purge_vault_only() -> int:
-    """Revoke AttendPlan's MFA enrollment from Windows Credential Manager."""
+    """Revoke AttendPlan's MFA enrollment from Windows Credential Manager.
+
+    Returns 0 on success (or if no credential was enrolled), 1 on failure.
+    """
     try:
         from app.services.totp_vault_service import TotpVaultService
 
@@ -231,48 +401,100 @@ def purge_vault_only() -> int:
         return 1
 
 
-def perform_safe_app_data_reset(backup_dest_str: str | None, confirm: str | None) -> int:
-    """Safely reset local app data with verified backup, vault revocation, and allowlist deletion."""
+def perform_safe_app_data_reset(
+    backup_dest_str: str | None,
+    confirm: str | None,
+    target_app_dir: Path | None = None,
+    allow_custom_root: bool = False,
+    require_vault_purge: bool = True,
+) -> int:
+    """Safely reset local app data with verified backup, vault revocation, and allowlist deletion.
+
+    Returns exit code mapped in RESET_EXIT_CODES.
+    """
     import shutil
-    from app.db.session import get_default_db_path
 
     if confirm != "DELETE":
+        safe_print(f"RESET_STATUS: {ResetStatus.CANCELLED}")
         safe_print("ERROR: Safety violation. --reset-app-data requires --confirm DELETE")
-        return 1
+        return RESET_EXIT_CODES[ResetStatus.CANCELLED]
 
-    db_path = get_default_db_path().resolve()
-    app_data_dir = db_path.parent.resolve()
+    custom_allowed = allow_custom_root or is_custom_root_allowed()
+    if target_app_dir and custom_allowed:
+        app_data_dir = target_app_dir.resolve()
+        db_path = (app_data_dir / "attendplan.sqlite3").resolve()
+    elif custom_allowed and os.environ.get("ATTENDPLAN_DB_PATH"):
+        db_path = Path(os.environ["ATTENDPLAN_DB_PATH"]).resolve()
+        app_data_dir = db_path.parent.resolve()
+    else:
+        # Enforce canonical data root in production
+        app_data_dir = get_canonical_app_data_dir()
+        db_path = (app_data_dir / "attendplan.sqlite3").resolve()
+
+        # Reject noncanonical overrides in production
+        env_db = os.environ.get("ATTENDPLAN_DB_PATH")
+        if env_db:
+            env_db_path = Path(env_db).resolve()
+            try:
+                is_rel = env_db_path.is_relative_to(app_data_dir)
+            except AttributeError:
+                is_rel = str(env_db_path).startswith(str(app_data_dir))
+            if not is_rel and env_db_path.parent != app_data_dir:
+                safe_print(f"RESET_STATUS: {ResetStatus.INVALID_PATH}")
+                safe_print(
+                    f"ERROR: Non-canonical ATTENDPLAN_DB_PATH override detected ({env_db}). Production reset rejected."
+                )
+                return RESET_EXIT_CODES[ResetStatus.INVALID_PATH]
 
     if not backup_dest_str:
+        safe_print(f"RESET_STATUS: {ResetStatus.BACKUP_FAILED}")
         safe_print("ERROR: --reset-app-data requires a verified backup destination via --backup-dest")
-        return 1
+        return RESET_EXIT_CODES[ResetStatus.BACKUP_FAILED]
 
-    backup_dest = Path(backup_dest_str).resolve()
-    if backup_dest == db_path:
-        safe_print(f"ERROR: Backup destination collides with source database ({backup_dest})")
-        return 1
+    # Process and lock safety check
+    active, reason = is_app_or_db_active(db_path)
+    if active:
+        safe_print(f"RESET_STATUS: {ResetStatus.APP_RUNNING}")
+        safe_print(f"CRITICAL: Cannot reset application data while app is active: {reason}")
+        return RESET_EXIT_CODES[ResetStatus.APP_RUNNING]
 
+    # Verify backup destination is not inside deletion scope
+    dest_path = Path(backup_dest_str).resolve()
     try:
-        if backup_dest.is_relative_to(app_data_dir):
+        if dest_path.is_relative_to(app_data_dir) or dest_path == app_data_dir:
+            safe_print(f"RESET_STATUS: {ResetStatus.INVALID_PATH}")
             safe_print(f"ERROR: Backup destination cannot be inside the deletion scope ({app_data_dir})")
-            return 1
+            return RESET_EXIT_CODES[ResetStatus.INVALID_PATH]
     except AttributeError:
-        if str(backup_dest).startswith(str(app_data_dir)):
+        if str(dest_path).startswith(str(app_data_dir)):
+            safe_print(f"RESET_STATUS: {ResetStatus.INVALID_PATH}")
             safe_print(f"ERROR: Backup destination cannot be inside the deletion scope ({app_data_dir})")
-            return 1
+            return RESET_EXIT_CODES[ResetStatus.INVALID_PATH]
 
+    # 1. Mandatory Safety Backup
+    backup_file: Path | None = None
     if db_path.exists():
-        safe_print(f"Creating verified safety backup to {backup_dest} before data reset...")
-        res = perform_safe_backup(str(backup_dest))
-        if res != 0:
-            safe_print("CRITICAL: Safety backup failed or failed integrity check. ABORTING RESET.")
-            return 1
+        safe_print(f"Creating verified safety backup before data reset...")
+        rc, backup_file, _ = perform_safe_backup(
+            dest_path_str=backup_dest_str,
+            source_db_path=db_path,
+            allow_custom_source=allow_custom_root,
+        )
+        if rc != 0 or not backup_file or not backup_file.exists():
+            safe_print(f"RESET_STATUS: {ResetStatus.BACKUP_FAILED}")
+            safe_print("CRITICAL: Safety backup failed or failed integrity verification. ABORTING RESET.")
+            return RESET_EXIT_CODES[ResetStatus.BACKUP_FAILED]
 
-    try:
-        purge_vault_only()
-    except Exception as exc:
-        safe_print(f"Warning during vault revocation: {exc}")
+    # 2. Vault Revocation (Fail Closed)
+    if require_vault_purge:
+        safe_print("Revoking stored authenticator credentials in Windows Credential Manager...")
+        vault_rc = purge_vault_only()
+        if vault_rc != 0:
+            safe_print(f"RESET_STATUS: {ResetStatus.VAULT_FAILED}")
+            safe_print("CRITICAL: Vault revocation failed. Aborting reset before deletion.")
+            return RESET_EXIT_CODES[ResetStatus.VAULT_FAILED]
 
+    # 3. Canonical Deletion Allowlist
     ALLOWLIST_FILES = [
         "attendplan.sqlite3",
         "attendplan.sqlite3-wal",
@@ -295,26 +517,44 @@ def perform_safe_app_data_reset(backup_dest_str: str | None, confirm: str | None
     ]
 
     safe_print("Applying strict allowlist data cleanup...")
-    deleted_items = []
-    preserved_items = []
+    deleted_items: list[str] = []
+    failed_items: list[str] = []
+    preserved_items: list[str] = []
 
     for fname in ALLOWLIST_FILES:
         target = app_data_dir / fname
         if target.exists():
+            if is_reparse_point_or_symlink(target):
+                safe_print(f"ERROR: Refusing to delete symlink or reparse point: {target}")
+                failed_items.append(str(target))
+                continue
             try:
                 target.unlink()
-                deleted_items.append(str(target))
+                if target.exists():
+                    failed_items.append(str(target))
+                else:
+                    deleted_items.append(str(target))
             except Exception as e:
-                safe_print(f"Warning: could not delete {target}: {e}")
+                safe_print(f"ERROR: Failed to delete file {target}: {e}")
+                failed_items.append(str(target))
 
     for dname in ALLOWLIST_DIRS:
         target_dir = app_data_dir / dname
-        if target_dir.exists() and target_dir.is_dir():
+        if target_dir.exists():
+            if is_reparse_point_or_symlink(target_dir):
+                safe_print(f"ERROR: Refusing to delete symlink or reparse directory: {target_dir}")
+                failed_items.append(str(target_dir))
+                continue
             try:
-                shutil.rmtree(target_dir, ignore_errors=True)
-                deleted_items.append(str(target_dir))
+                # Do NOT ignore errors!
+                shutil.rmtree(target_dir)
+                if target_dir.exists():
+                    failed_items.append(str(target_dir))
+                else:
+                    deleted_items.append(str(target_dir))
             except Exception as e:
-                safe_print(f"Warning: could not delete directory {target_dir}: {e}")
+                safe_print(f"ERROR: Failed to delete directory {target_dir}: {e}")
+                failed_items.append(str(target_dir))
 
     for pdir in PROTECTED_DIRS:
         ptarget = app_data_dir / pdir
@@ -322,26 +562,31 @@ def perform_safe_app_data_reset(backup_dest_str: str | None, confirm: str | None
             preserved_items.append(str(ptarget))
 
     safe_print("=" * 60)
+    if failed_items:
+        safe_print("ATTENDPLAN APP DATA RESET INCOMPLETE (PARTIAL FAILURE)")
+        safe_print(f"RESET_STATUS: {ResetStatus.DELETION_PARTIAL}")
+        safe_print(f"Failed Items ({len(failed_items)}):")
+        for it in failed_items:
+            safe_print(f"  - {it}")
+        safe_print(f"Deleted Items ({len(deleted_items)}):")
+        for it in deleted_items:
+            safe_print(f"  - {it}")
+        if backup_file:
+            safe_print(f"Verified Backup Preserved At: {backup_file}")
+        return RESET_EXIT_CODES[ResetStatus.DELETION_PARTIAL]
+
     safe_print("ATTENDPLAN APP DATA RESET COMPLETED SAFELY")
-    safe_print(f"Verified Backup Preserved At: {backup_dest}")
+    safe_print(f"RESET_STATUS: {ResetStatus.SUCCESS}")
+    if backup_file:
+        safe_print(f"Verified Backup Preserved At: {backup_file}")
     safe_print(f"Deleted Items ({len(deleted_items)}):")
     for it in deleted_items:
         safe_print(f"  - {it}")
     safe_print(f"Protected Security Evidence & Archives Preserved ({len(preserved_items)}):")
-    for it in preserved_items:
-        safe_print(f"  + {it}")
+    for pit in preserved_items:
+        safe_print(f"  - {pit}")
     safe_print("=" * 60)
-    return 0
-
-
-def safe_print(*args: Any, **kwargs: Any) -> None:
-    """Print safely without raising when stdout is None in Windows windowed mode."""
-    if sys.stdout is not None and hasattr(sys.stdout, "write"):
-        try:
-            print(*args, **kwargs)
-        except Exception:
-            pass
-
+    return RESET_EXIT_CODES[ResetStatus.SUCCESS]
 
 def setup_desktop_logging() -> logging.Logger:
     """Set up rotating desktop log file in %LOCALAPPDATA%/AttendPlan/logs/."""
@@ -607,7 +852,8 @@ def run_launcher() -> int:
         return inspect_database_file(get_default_db_path().resolve())
 
     if args.backup_db:
-        return perform_safe_backup(args.backup_db)
+        rc, _, _ = perform_safe_backup(args.backup_db)
+        return rc
 
     if args.purge_vault:
         return purge_vault_only()

@@ -264,7 +264,7 @@ function Invoke-FullReset {
 
     $confirm = Read-Host "`nType 'DELETE' in capital letters to confirm application data reset"
     if ($confirm -ne "DELETE") {
-        Write-Host "Reset aborted. No files were modified." -ForegroundColor Green
+        Write-Host "`nRESULT: CANCELLED — Reset aborted. No files were modified." -ForegroundColor Green
         return
     }
 
@@ -272,68 +272,79 @@ function Invoke-FullReset {
     $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
     $emergencyBackup = Join-Path $desktopDir "AttendPlan_PreReset_Backup_$timestamp.sqlite3"
 
-    Write-Host "`nCreating mandatory safety backup to Desktop..." -ForegroundColor Cyan
-    $backupResult = Invoke-SafetyBackup -CustomDest $emergencyBackup
+    Write-Host "`nInvoking canonical AttendPlan reset engine..." -ForegroundColor Cyan
+    $output = @()
+    $exitCode = 1
 
-    if (-not $backupResult -or -not (Test-Path $emergencyBackup) -or (Get-Item $emergencyBackup).Length -eq 0) {
-        Write-Host "`nCRITICAL SAFETY ABORT: Safety backup failed or failed integrity verification." -ForegroundColor Red
-        Write-Host "The database and local data will NOT be deleted. Your data remains untouched." -ForegroundColor Red
+    if ($AppExe) {
+        $output = & cmd /c "`"$AppExe`" --reset-app-data --confirm DELETE --backup-dest `"$emergencyBackup`"" 2>&1
+        $exitCode = $LASTEXITCODE
+    } elseif ($PythonExe) {
+        $launcher = Join-Path $PSScriptRoot "..\backend\launcher.py"
+        if (-not (Test-Path $launcher)) {
+            $launcher = Join-Path $PSScriptRoot "backend\launcher.py"
+        }
+        if (Test-Path $launcher) {
+            $output = & $PythonExe $launcher --reset-app-data --confirm DELETE --backup-dest $emergencyBackup 2>&1
+            $exitCode = $LASTEXITCODE
+        } else {
+            Write-Host "ERROR: Launcher not found at $launcher" -ForegroundColor Red
+            return
+        }
+    } else {
+        Write-Host "ERROR: Neither AttendPlan.exe nor Python runtime found. Cannot safely execute reset." -ForegroundColor Red
         return
     }
 
-    Write-Host "Safety backup verified successfully: $emergencyBackup" -ForegroundColor Green
-
-    # Revoke authenticator in Windows Credential Manager
-    if ($AppExe) {
-        cmd /c "`"$AppExe`" --purge-vault"
-    } elseif ($PythonExe) {
-        $launcher = Join-Path $PSScriptRoot "..\backend\launcher.py"
-        if (Test-Path $launcher) {
-            & $PythonExe $launcher --purge-vault
-        }
+    # Print canonical engine output
+    foreach ($line in $output) {
+        Write-Host "  $line" -ForegroundColor Gray
     }
 
-    # Strict Allowlist of application-owned files to delete in %LOCALAPPDATA%\AttendPlan
-    $allowlistFiles = @(
-        "attendplan.sqlite3",
-        "attendplan.sqlite3-wal",
-        "attendplan.sqlite3-shm",
-        "settings.json",
-        "startup.json",
-        "term_calendars.json",
-        "totp_metadata.json"
-    )
-
-    $allowlistDirs = @(
-        "logs",
-        "run",
-        "chrome-profile"
-    )
-
-    Write-Host "`nRemoving working database and configuration (allowlist only)..." -ForegroundColor Yellow
-    foreach ($fname in $allowlistFiles) {
-        $target = Join-Path $AttendPlanDataDir $fname
-        if (Test-Path $target) {
-            Remove-Item -Path $target -Force -ErrorAction SilentlyContinue
-            Write-Host "  Deleted: $fname" -ForegroundColor Gray
+    # Handle structured engine result states
+    switch ($exitCode) {
+        0 {
+            Write-Host "`n==================================================================" -ForegroundColor Green
+            Write-Host "  RESULT: SUCCESS — APPLICATION DATA RESET COMPLETED SAFELY" -ForegroundColor Green
+            Write-Host "==================================================================" -ForegroundColor Green
+            Write-Host "  Emergency Backup Preserved : $emergencyBackup" -ForegroundColor Green
+            Write-Host "  Historical Backups Kept    : $BackupsDir" -ForegroundColor Cyan
+            Write-Host "  Security Evidence Kept     : $EvidenceDir" -ForegroundColor Magenta
+            Write-Host "==================================================================" -ForegroundColor Green
+        }
+        2 {
+            Write-Host "`nRESULT: CANCELLED — Reset confirmation was not provided. No files were modified." -ForegroundColor Green
+        }
+        3 {
+            Write-Host "`nCRITICAL SAFETY ABORT: BACKUP_FAILED" -ForegroundColor Red
+            Write-Host "Safety backup failed or failed integrity verification." -ForegroundColor Red
+            Write-Host "The database and local data were NOT modified. Your data remains untouched." -ForegroundColor Red
+        }
+        4 {
+            Write-Host "`nCRITICAL SAFETY ABORT: VAULT_FAILED" -ForegroundColor Red
+            Write-Host "Failed to revoke credentials in Windows Credential Manager." -ForegroundColor Red
+            Write-Host "Reset was aborted before any data deletion. Your data remains untouched." -ForegroundColor Red
+        }
+        5 {
+            Write-Host "`nCRITICAL SAFETY ABORT: APP_RUNNING" -ForegroundColor Red
+            Write-Host "AttendPlan is currently running or database is locked." -ForegroundColor Red
+            Write-Host "Please close AttendPlan and retry." -ForegroundColor Red
+        }
+        6 {
+            Write-Host "`nWARNING: DELETION_PARTIAL" -ForegroundColor Yellow
+            Write-Host "Some allowlisted files or directories could not be deleted (they may be in use)." -ForegroundColor Yellow
+            Write-Host "Verified emergency backup remains preserved at: $emergencyBackup" -ForegroundColor Green
+        }
+        7 {
+            Write-Host "`nCRITICAL SAFETY ABORT: INVALID_PATH" -ForegroundColor Red
+            Write-Host "Backup destination or application data directory path is invalid." -ForegroundColor Red
+            Write-Host "No files were modified." -ForegroundColor Red
+        }
+        default {
+            Write-Host "`nCRITICAL SAFETY ABORT: UNEXPECTED_ERROR (Exit Code: $exitCode)" -ForegroundColor Red
+            Write-Host "An unexpected error occurred during reset. Check logs for details." -ForegroundColor Red
         }
     }
-
-    foreach ($dname in $allowlistDirs) {
-        $targetDir = Join-Path $AttendPlanDataDir $dname
-        if (Test-Path $targetDir) {
-            Remove-Item -Path $targetDir -Recurse -Force -ErrorAction SilentlyContinue
-            Write-Host "  Cleared: $dname\" -ForegroundColor Gray
-        }
-    }
-
-    Write-Host "`n==================================================================" -ForegroundColor Green
-    Write-Host "  APPLICATION DATA RESET COMPLETED SUCCESSFULLY" -ForegroundColor Green
-    Write-Host "==================================================================" -ForegroundColor Green
-    Write-Host "  Emergency Backup Preserved : $emergencyBackup" -ForegroundColor Green
-    Write-Host "  Historical Backups Kept    : $BackupsDir" -ForegroundColor Cyan
-    Write-Host "  Security Evidence Kept     : $EvidenceDir" -ForegroundColor Magenta
-    Write-Host "==================================================================" -ForegroundColor Green
 }
 
 if ($NonInteractive) {

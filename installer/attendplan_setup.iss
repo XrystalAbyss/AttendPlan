@@ -2,7 +2,7 @@
 ; Produces a per-user, non-administrative Windows installer (.exe)
 
 #define MyAppName "AttendPlan"
-#define MyAppVersion "0.1.0-beta.9"
+#define MyAppVersion "0.1.0-beta.10"
 #define MyAppPublisher "AttendPlan Team"
 #define MyAppURL "https://github.com/XrystalAbyss/AttendPlan"
 #define MyAppExeName "AttendPlan.exe"
@@ -69,6 +69,8 @@ Type: filesandordirs; Name: "{app}\_internal"
 Type: files; Name: "{app}\{#MyAppExeName}"
 Type: files; Name: "{app}\AttendPlan-Maintenance.cmd"
 Type: files; Name: "{app}\AttendPlan-Maintenance.ps1"
+Type: dirifempty; Name: "{app}"
+Type: dirifempty; Name: "{autoprograms}\{#MyAppName}"
 
 [Code]
 function ParseLeadingNumber(S: String): Integer;

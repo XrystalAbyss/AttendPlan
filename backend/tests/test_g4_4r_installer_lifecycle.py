@@ -68,7 +68,8 @@ class TestPerformSafeBackup:
         create_synthetic_test_db(src_db)
         backup_dest = tmp_path / "backups" / "safe_backup.sqlite3"
 
-        monkeypatch.setattr("app.db.session.get_default_db_path", lambda: src_db)
+        monkeypatch.setenv("ATTENDPLAN_ALLOW_CUSTOM_ROOT", "1")
+        monkeypatch.setenv("ATTENDPLAN_DB_PATH", str(src_db))
 
         res = perform_safe_backup(str(backup_dest))
         assert res == 0
@@ -90,47 +91,51 @@ class TestPerformSafeBackup:
         src_db = tmp_path / "appdata" / "missing.sqlite3"
         backup_dest = tmp_path / "backups" / "out.sqlite3"
 
-        monkeypatch.setattr("app.db.session.get_default_db_path", lambda: src_db)
+        monkeypatch.setenv("ATTENDPLAN_ALLOW_CUSTOM_ROOT", "1")
+        monkeypatch.setenv("ATTENDPLAN_DB_PATH", str(src_db))
         res = perform_safe_backup(str(backup_dest))
-        assert res == 1
+        assert res != 0
         assert not backup_dest.exists()
 
     def test_safe_backup_path_collision(self, tmp_path: Path, monkeypatch):
         src_db = tmp_path / "appdata" / "attendplan.sqlite3"
         create_synthetic_test_db(src_db)
 
-        monkeypatch.setattr("app.db.session.get_default_db_path", lambda: src_db)
+        monkeypatch.setenv("ATTENDPLAN_ALLOW_CUSTOM_ROOT", "1")
+        monkeypatch.setenv("ATTENDPLAN_DB_PATH", str(src_db))
         # Attempt to overwrite the source database
         res = perform_safe_backup(str(src_db))
-        assert res == 1
+        assert res != 0
 
 
 class TestPerformSafeAppDataReset:
     def test_reset_aborts_without_confirm_delete(self, tmp_path: Path):
         res = perform_safe_app_data_reset("C:/dest/backup.sqlite3", confirm=None)
-        assert res == 1
+        assert res != 0
 
         res = perform_safe_app_data_reset("C:/dest/backup.sqlite3", confirm="yes")
-        assert res == 1
+        assert res != 0
 
     def test_reset_aborts_without_backup_dest(self, tmp_path: Path, monkeypatch):
         src_db = tmp_path / "appdata" / "attendplan.sqlite3"
         create_synthetic_test_db(src_db)
-        monkeypatch.setattr("app.db.session.get_default_db_path", lambda: src_db)
+        monkeypatch.setenv("ATTENDPLAN_ALLOW_CUSTOM_ROOT", "1")
+        monkeypatch.setenv("ATTENDPLAN_DB_PATH", str(src_db))
 
         res = perform_safe_app_data_reset(None, confirm="DELETE")
-        assert res == 1
+        assert res != 0
 
     def test_reset_aborts_if_backup_dest_inside_deletion_scope(self, tmp_path: Path, monkeypatch):
         app_dir = tmp_path / "appdata"
         src_db = app_dir / "attendplan.sqlite3"
         create_synthetic_test_db(src_db)
-        monkeypatch.setattr("app.db.session.get_default_db_path", lambda: src_db)
+        monkeypatch.setenv("ATTENDPLAN_ALLOW_CUSTOM_ROOT", "1")
+        monkeypatch.setenv("ATTENDPLAN_DB_PATH", str(src_db))
 
         # Inside app_dir
         dest_inside = app_dir / "unsafe_backup.sqlite3"
         res = perform_safe_app_data_reset(str(dest_inside), confirm="DELETE")
-        assert res == 1
+        assert res != 0
 
     def test_reset_allowlist_cleanup_and_protected_directory_preservation(
         self, tmp_path: Path, monkeypatch
@@ -139,7 +144,8 @@ class TestPerformSafeAppDataReset:
         app_dir.mkdir(parents=True, exist_ok=True)
         src_db = app_dir / "attendplan.sqlite3"
         create_synthetic_test_db(src_db)
-        monkeypatch.setattr("app.db.session.get_default_db_path", lambda: src_db)
+        monkeypatch.setenv("ATTENDPLAN_ALLOW_CUSTOM_ROOT", "1")
+        monkeypatch.setenv("ATTENDPLAN_DB_PATH", str(src_db))
 
         # Allowlisted files
         settings_file = app_dir / "settings.json"
