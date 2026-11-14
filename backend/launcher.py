@@ -24,7 +24,7 @@ BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-APP_VERSION = "0.1.0-beta.4"
+APP_VERSION = "0.1.0-beta.5"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 
@@ -140,7 +140,11 @@ def wait_for_server(
     return False
 
 
-def launch_unified_browser(target_url: str, logger: logging.Logger) -> None:
+def launch_unified_browser(
+    target_url: str,
+    logger: logging.Logger,
+    allow_default_browser: bool = False,
+) -> dict[str, Any]:
     """Open AttendPlan in dedicated Chromium profile, creating unified multi-tab experience."""
     try:
         from app.adapters.portal_session import (
@@ -153,7 +157,7 @@ def launch_unified_browser(target_url: str, logger: logging.Logger) -> None:
         if manager.is_cdp_reachable():
             logger.info("Managed Chromium already active on loopback CDP; opening/focusing dashboard tab...")
             if manager.open_or_focus_tab(target_url):
-                return
+                return {"success": True, "mode": "cdp_existing_tab"}
 
         chrome_exe = find_chrome_executable()
         if chrome_exe:
@@ -186,15 +190,28 @@ def launch_unified_browser(target_url: str, logger: logging.Logger) -> None:
                     stderr=subprocess.DEVNULL,
                 )
             logger.info("Launched unified Chromium profile with dashboard at %s", target_url)
-            return
+            return {"success": True, "mode": "chromium_process"}
     except Exception as exc:
         logger.warning(
-            "Could not launch dedicated Chromium browser: %s. Falling back to system default browser.",
+            "Could not launch dedicated Chromium browser: %s.",
             exc,
         )
 
-    logger.info("Opening system default browser to %s", target_url)
-    webbrowser.open(target_url)
+    if allow_default_browser:
+        logger.info("Opening system default browser to %s (--open-default-browser passed)", target_url)
+        webbrowser.open(target_url)
+        return {"success": True, "mode": "system_default_browser"}
+
+    guidance = (
+        "No compatible Chromium-based browser (Chrome, Edge, Brave) was found on loopback. "
+        "Install Google Chrome or Microsoft Edge for the best experience, or pass --open-default-browser to launch in your default browser."
+    )
+    logger.warning("Chromium executable not detected and --open-default-browser not specified. Did not launch system browser.")
+    return {
+        "success": False,
+        "mode": "none",
+        "guidance": guidance,
+    }
 
 
 def run_launcher() -> int:
@@ -217,6 +234,11 @@ def run_launcher() -> int:
         "--no-browser",
         action="store_true",
         help="Start the server without opening the web browser",
+    )
+    parser.add_argument(
+        "--open-default-browser",
+        action="store_true",
+        help="Allow falling back to the system default browser if Chromium is not found",
     )
     parser.add_argument(
         "--version",
@@ -253,7 +275,11 @@ def run_launcher() -> int:
 
         if not args.no_browser:
             logger.info("Focusing/opening unified browser to existing instance...")
-            launch_unified_browser(f"http://{args.host}:{target_port}/", logger)
+            launch_unified_browser(
+                f"http://{args.host}:{target_port}/",
+                logger,
+                allow_default_browser=args.open_default_browser,
+            )
         safe_print(f"AttendPlan is already running at http://{args.host}:{target_port}/")
         return 0
 
@@ -290,6 +316,13 @@ def run_launcher() -> int:
     )
     server = uvicorn.Server(server_config)
 
+    def trigger_shutdown() -> None:
+        SHUTDOWN_EVENT.set()
+        server.should_exit = True
+
+    app.state.trigger_shutdown = trigger_shutdown
+    app.state.shutdown_event = SHUTDOWN_EVENT
+
     # Run Uvicorn server in a separate daemon thread
     server_thread = threading.Thread(
         target=server.run,
@@ -313,7 +346,14 @@ def run_launcher() -> int:
     safe_print("=" * 60)
 
     if not args.no_browser:
-        launch_unified_browser(target_url, logger)
+        launch_res = launch_unified_browser(
+            target_url,
+            logger,
+            allow_default_browser=args.open_default_browser,
+        )
+        if not launch_res.get("success"):
+            safe_print(f"NOTE: {launch_res.get('guidance')}")
+            safe_print(f"You can open {target_url} manually in your browser.")
 
     # Keep main thread alive until shutdown event or user interruption
     try:

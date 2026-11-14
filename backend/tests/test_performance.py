@@ -73,48 +73,58 @@ def test_performance_api_requires_own_exact_scope_approval(tmp_path, monkeypatch
         client = TestClient(app)
         monkeypatch.delenv("ATTENDPLAN_ENABLE_PERFORMANCE_PILOT", raising=False)
         assert client.get("/api/v1/performance/overview").json()["terms"] == []
-        assert client.post("/api/v1/performance/import", json={"term_key":"x", "view":"marks"}).status_code == 409
+        assert client.post("/api/v1/performance/import", json={"term_key":"x", "view":"marks"}).status_code == 400
         with Session(engine) as db:
             db.add(SyncJob(source_scope="HISTORICAL_SELECTOR_DISCOVERY", state="COMPLETED", details={"combinations":[
                 {"academic_year":"2025-2026","semester":"4","class_id":"2140","class_label":"Synthetic Class Four"}
             ]}))
             db.commit()
-        body = {"term_key":"2025-2026_s4_2140", "view":"results"}
-        preview = client.post("/api/v1/performance/preview", json=body).json()
-        monkeypatch.setenv("ATTENDPLAN_ENABLE_PERFORMANCE_PILOT", "1")
-        from app.api import performance_routes
-        calls = []
-        def extract(term, view):
-            calls.append(view)
-            return parse_performance(SYNTHETIC_MARKS)
-        monkeypatch.setattr(performance_routes, "extract_performance", extract)
-        # Altering scope must not consume the valid approval.
-        assert client.post("/api/v1/performance/import", json={**body,"view":"marks","approval_id":preview["approval_id"]}).status_code == 409
-        assert calls == []
-        assert client.post("/api/v1/performance/import", json={**body,"approval_id":preview["approval_id"]}).status_code == 200
-        assert client.post("/api/v1/performance/import", json={**body,"approval_id":preview["approval_id"]}).status_code == 409
-        assert calls == ["results"]
-        marks = {"term_key":body["term_key"],"view":"marks"}
-        assert client.post("/api/v1/performance/preview",json=marks).status_code == 400
-        marks.update(exam_session="SYNTHETIC-EXAM",exam_type="3",division_id="A")
-        assert client.post("/api/v1/performance/preview",json=marks).status_code == 409
+        body = {"term_key":"2025-2026_s4_2140", "view":"marks"}
+        # Results preview and import must be rejected with 400 (retired)
+        assert client.post("/api/v1/performance/preview", json={"term_key": body["term_key"], "view": "results"}).status_code == 400
+        assert client.post("/api/v1/performance/import", json={"term_key": body["term_key"], "view": "results"}).status_code == 400
+
+        # Type-4 external exam must be rejected with 400
+        type4_body = {"term_key": body["term_key"], "view": "marks", "exam_session": "SYNTHETIC-EXAM", "exam_type": "4", "division_id": "A"}
+        assert client.post("/api/v1/performance/preview", json=type4_body).status_code == 400
+        assert client.post("/api/v1/performance/import", json=type4_body).status_code == 400
+
+        # Incomplete marks scope must return 400
+        assert client.post("/api/v1/performance/preview", json=body).status_code == 400
+
+        marks = {"term_key": body["term_key"], "view": "marks", "exam_session": "SYNTHETIC-EXAM", "exam_type": "3", "division_id": "A"}
+        # Undiscovered scope returns 409
+        assert client.post("/api/v1/performance/preview", json=marks).status_code == 409
+
         with Session(engine) as db:
-            db.add(SyncJob(source_scope="PERFORMANCE_SCOPE_DISCOVERY",state="COMPLETED",details={
-                "term_key":body["term_key"],"scopes":[{"exam_session":"SYNTHETIC-EXAM","exam_type":"3","division_id":"A"}]
+            db.add(SyncJob(source_scope="PERFORMANCE_SCOPE_DISCOVERY", state="COMPLETED", details={
+                "term_key": body["term_key"], "scopes": [{"exam_session": "SYNTHETIC-EXAM", "exam_type": "3", "division_id": "A"}]
             }))
             db.commit()
+
         from app.adapters import performance_portal
-        monkeypatch.setattr(performance_portal,"extract_marks",lambda *args:parse_performance(SYNTHETIC_MARKS))
-        mark_preview=client.post("/api/v1/performance/preview",json=marks)
+        monkeypatch.setattr(performance_portal, "extract_marks", lambda *args: parse_performance(SYNTHETIC_MARKS))
+        mark_preview = client.post("/api/v1/performance/preview", json=marks)
         assert mark_preview.status_code == 200
-        marks["approval_id"]=mark_preview.json()["approval_id"]
-        assert client.post("/api/v1/performance/import",json={**marks,"division_id":"B"}).status_code == 409
-        from app.adapters import performance_portal
-        monkeypatch.setattr(performance_portal,"extract_marks",lambda *args:parse_performance(SYNTHETIC_MARKS))
-        assert client.post("/api/v1/performance/import",json=marks).status_code == 200
+        preview_data = mark_preview.json()
+        assert preview_data["source_course_count"] == 2
+        approval_id = preview_data["approval_id"]
+
+        # Scope tampering returns 409
+        assert client.post("/api/v1/performance/import", json={**marks, "approval_id": approval_id, "division_id": "B"}).status_code == 409
+
+        # Import without approval_id returns 400
+        assert client.post("/api/v1/performance/import", json=marks).status_code == 400
+
+        # First import succeeds and marks the approval consumed
+        assert client.post("/api/v1/performance/import", json={**marks, "approval_id": approval_id}).status_code == 200
+
+        # Replay attempt fails with 409
+        assert client.post("/api/v1/performance/import", json={**marks, "approval_id": approval_id}).status_code == 409
+
         with Session(engine) as db:
-            snapshots=db.scalars(select(PerformanceSnapshot)).all()
-            assert {s.view for s in snapshots} == {"results","marks:SYNTHETIC-EXAM:3:A"}
+            snapshots = db.scalars(select(PerformanceSnapshot)).all()
+            assert {s.view for s in snapshots} == {"marks:SYNTHETIC-EXAM:3:A"}
 
     finally:
         app.dependency_overrides.clear()

@@ -1,4 +1,4 @@
-# AttendPlan — Supervised Friends-Beta Testing Guide (v0.1.0-beta.4)
+# AttendPlan — Supervised Friends-Beta Testing Guide (v0.1.0-beta.5)
 
 Welcome to the private beta testing for **AttendPlan**!  
 AttendPlan is an open-source, local-first attendance planning companion designed to help university students track their attendance, calculate safe bunks, and plan recovery periods to stay comfortably above the institutional 75% requirement.
@@ -29,9 +29,9 @@ Before you begin, here is our strict guarantee to you:
 Follow this 12-step walkthrough to test AttendPlan and verify that it works properly on your computer.
 
 ### Step 1: Install AttendPlan
-1. Download or copy `AttendPlan-0.1.0-beta.4-Setup.exe`.
+1. Download or copy `AttendPlan-0.1.0-beta.5-Setup.exe`.
 2. *(Optional Integrity Check)* Verify its SHA-256 checksum:  
-   `160664cdb70f068f142c0611398b1f1bb579b38ee47dc2dc7d1bf7bd87df1486`
+   `ca31c1d34e8d902eaffbc0710e94bcdc6afe2baee77fe3611608cabe1e6d6aa8`
 3. Double-click the installer.  
    *(If Windows SmartScreen appears because this is a private test build, click "More info" -> "Run anyway").*
 4. Complete the installation. A desktop shortcut and Start Menu entry will be created.

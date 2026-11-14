@@ -1,10 +1,10 @@
 # AttendPlan
 
-> **AttendPlan v0.1.0-beta.4 — Real Beta Recovery & Hotfix Release (November 2026)**  
+> **AttendPlan v0.1.0-beta.5 — First-User Release-Blocker Closure (November 2026)**  
 > **Local-First University Attendance Intelligence Application**  
 > Helping students manage a 75% subject-wise attendance requirement with exact mathematics, zero credential capture, and air-gapped local privacy.
 >
-> 🛡️ **Verified Quality Gates:** 346 Python unit & domain tests, 38 Vitest frontend tests, 75 API endpoints, 100% strict typing (`mypy` / `tsc`), zero student PII leaks, and standalone Windows Inno Setup installer.
+> 🛡️ **Verified Quality Gates:** 349 Python unit & domain tests, 41 Vitest frontend tests, 75 API endpoints, 100% strict typing (`mypy` / `tsc`), zero student PII leaks, and standalone Windows Inno Setup installer.
 
 ---
 
@@ -94,7 +94,7 @@ AttendPlan/
 ### 4.1 Windows Installer (For Students)
 
 For students and nontechnical users, download the latest packaged installer from the release assets:
-- **Installer**: `AttendPlan-0.1.0-beta.4-Setup.exe`
+- **Installer**: `AttendPlan-0.1.0-beta.5-Setup.exe`
 - **Installation Scope**: Installs to `%LOCALAPPDATA%\Programs\AttendPlan` without requiring Windows administrator privileges.
 - **Includes**: Standalone bundled Python backend executable and pre-built React frontend assets. No external Python, Node.js, or Git installation required.
 

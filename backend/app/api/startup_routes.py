@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from playwright.sync_api import sync_playwright
 from sqlalchemy import select
 
@@ -163,16 +163,31 @@ def status() -> dict[str, Any]:
 
 
 @router.post("/shutdown")
-def shutdown_endpoint() -> dict[str, Any]:
+def shutdown_endpoint(request: Request) -> dict[str, Any]:
     """Graceful shutdown endpoint for desktop launcher."""
-    import threading
-    def _trigger() -> None:
-        import time
-        time.sleep(0.5)
-        try:
-            import launcher
-            launcher.SHUTDOWN_EVENT.set()
-        except Exception:
-            pass
-    threading.Thread(target=_trigger, daemon=True).start()
+    client_host = request.client.host if request.client else ""
+    if client_host not in {"127.0.0.1", "localhost", "::1", "testclient"}:
+        raise HTTPException(status_code=403, detail="Shutdown endpoint is restricted to local loopback callers.")
+
+    sec_fetch_site = request.headers.get("sec-fetch-site")
+    if sec_fetch_site == "cross-site":
+        raise HTTPException(status_code=403, detail="Cross-site shutdown requests are forbidden.")
+
+    trigger_fn = getattr(request.app.state, "trigger_shutdown", None)
+    if trigger_fn is not None:
+        import threading
+        def _trigger() -> None:
+            import time
+            time.sleep(0.3)
+            try:
+                trigger_fn()
+            except Exception:
+                pass
+        threading.Thread(target=_trigger, daemon=True).start()
+    else:
+        # Fallback if running standalone or test environment
+        event = getattr(request.app.state, "shutdown_event", None)
+        if event is not None:
+            event.set()
+
     return {"status": "shutting_down", "message": "AttendPlan server is stopping cleanly."}

@@ -78,7 +78,7 @@ Previously, `launcher.py` invoked Python's `webbrowser.open(dashboard_url)`. On 
 ### 4.2 Unified Dedicated Chromium Solution
 - Implemented `launch_unified_browser()` in `backend/launcher.py`.
 - AttendPlan locates Google Chrome, Microsoft Edge, or Chromium and launches a single dedicated browser window bound to `%LOCALAPPDATA%\AttendPlan\chrome-profile`.
-- The dashboard is loaded as the primary tab (`http://127.0.0.1:8000`), and clicking "Open University Portal" opens the ERP login page (`https://portal.amity.edu/...`) as a sibling tab within the exact same browser window via CDP `/json/new`.
+- The dashboard is loaded as the primary tab (`http://127.0.0.1:8000`), and clicking "Open University Portal" opens the ERP login page (`https://mrei.icloudems.com/corecampus/index.php`) as a sibling tab within the exact same browser window via CDP `/json/new`.
 - No secondary or conflicting browser is ever invoked.
 
 ---

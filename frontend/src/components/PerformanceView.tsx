@@ -83,6 +83,7 @@ export const PerformanceView: React.FC = () => {
   const [view, setView] = useState("marks");
   const [examKey, setExamKey] = useState("");
   const [selectedSemesterFilter, setSelectedSemesterFilter] = useState<string>("ALL");
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const query = useQuery({
     queryKey: ["performance"],
@@ -194,13 +195,25 @@ export const PerformanceView: React.FC = () => {
       {query.error && <p role="alert" className="text-rose-400 text-sm">{query.error.message}</p>}
 
       {query.data?.terms.length === 0 && (
-        <div className="p-8 text-center bg-slate-900/60 border border-slate-800 rounded-xl space-y-2">
+        <div className="p-8 text-center bg-slate-900/60 border border-slate-800 rounded-xl space-y-3">
           <p className="text-base font-semibold text-slate-200 m-0">
             No assessments imported yet
           </p>
           <p className="text-xs text-slate-400 m-0 max-w-lg mx-auto">
             No marks or semester results have been imported. Attendance records are separate and unaffected.
           </p>
+          <div>
+            <button
+              onClick={() => {
+                setDetailsOpen(true);
+                const el = document.getElementById("advanced-import-controls");
+                if (el) el.scrollIntoView({ behavior: "smooth" });
+              }}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg px-4 py-2 text-xs font-semibold cursor-pointer transition-colors"
+            >
+              Import Marks from University Portal
+            </button>
+          </div>
           <p className="text-xs text-slate-500 m-0">
             Use the discovery flow below if you wish to review available university examination scopes.
           </p>
@@ -381,7 +394,12 @@ export const PerformanceView: React.FC = () => {
       <p className="text-xs text-slate-500 pt-2">{query.data?.note}</p>
 
       {/* 4. Advanced / Developer Discovery & Scopes Disclosure (Preserves tests) */}
-      <details open={allTerms.length === 0} className="border border-slate-800 rounded-xl bg-slate-900/60 p-4 space-y-3 text-xs">
+      <details
+        id="advanced-import-controls"
+        open={detailsOpen || allTerms.length === 0}
+        onToggle={(e) => setDetailsOpen(e.currentTarget.open)}
+        className="border border-slate-800 rounded-xl bg-slate-900/60 p-4 space-y-3 text-xs"
+      >
         <summary className="cursor-pointer font-medium text-slate-400 hover:text-slate-200 flex items-center justify-between">
           <span className="flex items-center gap-2">
             <Sliders className="w-4 h-4 text-slate-400" />
@@ -392,7 +410,7 @@ export const PerformanceView: React.FC = () => {
 
         <div className="pt-3 space-y-3 border-t border-slate-800 text-slate-300">
           <p className="text-xs text-slate-400">
-            Use your existing login setup privately, then discover terms in Historical Attendance. Preview one semester and one results view before approving an import.
+            Use your existing login setup privately, then discover terms in Historical Attendance. Preview one semester and one marks scope before approving an import.
           </p>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -434,7 +452,7 @@ export const PerformanceView: React.FC = () => {
                 }}
               >
                 <option value="marks">Subject marks</option>
-                <option value="results">Semester results</option>
+                <option value="results">Semester results (Retired)</option>
               </select>
             </label>
 
@@ -472,13 +490,13 @@ export const PerformanceView: React.FC = () => {
 
             <button
               className="border border-slate-700 rounded px-3 py-1 text-xs hover:bg-slate-800 disabled:opacity-40 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500"
-              disabled={!key || (view === "marks" && !selectedExam) || preview.isPending || capture.isPending}
+              disabled={!key || view === "results" || (view === "marks" && !selectedExam) || preview.isPending || capture.isPending}
               onClick={() => preview.mutate()}
             >
               Preview performance scope
             </button>
 
-            {view === "results" && preview.data && (
+            {view === "marks" && preview.data && (
               <button
                 className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded px-3 py-1 text-xs font-semibold cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500"
                 disabled={!query.data?.live_capture_enabled || capture.isPending}
@@ -495,11 +513,37 @@ export const PerformanceView: React.FC = () => {
             </p>
           )}
 
+          {view === "results" && (
+            <div role="status" className="p-3 bg-amber-950/60 border border-amber-800/80 rounded text-xs text-amber-300">
+              <p className="font-semibold m-0">Live Capture Retired</p>
+              <p className="m-0 mt-0.5">
+                Official semester results live portal import has been retired by COE / University. Use the Official Results tab to inspect archived results.
+              </p>
+            </div>
+          )}
+
+          {preview.error && (
+            <div role="alert" className="p-3 bg-rose-950/60 border border-rose-800/80 rounded text-xs text-rose-300">
+              <p className="font-semibold m-0">Preview Failed</p>
+              <p className="m-0 mt-0.5">{preview.error.message || "Failed to preview marks scope."}</p>
+            </div>
+          )}
+
+          {capture.error && (
+            <div role="alert" className="p-3 bg-rose-950/60 border border-rose-800/80 rounded text-xs text-rose-300">
+              <p className="font-semibold m-0">Import Failed</p>
+              <p className="m-0 mt-0.5">{capture.error.message || "Failed to import approved marks."}</p>
+            </div>
+          )}
+
           {preview.data && (
             <div className="p-3 bg-slate-800/80 border border-slate-700 rounded text-xs space-y-1">
               <p className="font-semibold text-slate-200 m-0">Preview Scope Approval</p>
               <p className="text-slate-300 m-0">
                 Term: {preview.data.label} &bull; View: {preview.data.view}
+                {preview.data.source_course_count != null && (
+                  <span> &bull; Courses: {preview.data.source_course_count}</span>
+                )}
               </p>
               <p className="text-slate-200 font-mono m-0">{preview.data.scope}</p>
             </div>
