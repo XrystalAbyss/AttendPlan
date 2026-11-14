@@ -98,6 +98,16 @@ export const SettingsView: React.FC<{
     },
   });
 
+  // 5. Startup Status Query (for instance token)
+  const startupStatus = useQuery({
+    queryKey: ["startup-status"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/v1/startup/status`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+
   // Mutations
   const updateAuthSettings = useMutation({
     mutationFn: async (payload: Partial<AppSettingsResponse> & { mobile_number?: string; clear_mobile?: boolean }) => {
@@ -140,7 +150,10 @@ export const SettingsView: React.FC<{
 
   const exportBackup = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`${API_BASE}/api/v1/auth/backup/export`, { method: "POST" });
+      const instanceToken = startupStatus.data?.instance_token;
+      const headers: Record<string, string> = {};
+      if (instanceToken) headers["X-AttendPlan-Instance"] = instanceToken;
+      const res = await fetch(`${API_BASE}/api/v1/auth/backup/export`, { method: "POST", headers });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail ?? "Failed to export backup");
       return data;
@@ -156,7 +169,10 @@ export const SettingsView: React.FC<{
 
   const disconnectSession = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`${API_BASE}/api/v1/portal/session/disconnect`, { method: "POST" });
+      const instanceToken = startupStatus.data?.instance_token;
+      const headers: Record<string, string> = {};
+      if (instanceToken) headers["X-AttendPlan-Instance"] = instanceToken;
+      const res = await fetch(`${API_BASE}/api/v1/portal/session/disconnect`, { method: "POST", headers });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail ?? "Failed to disconnect session");
       return data;
@@ -518,7 +534,7 @@ export const SettingsView: React.FC<{
           AttendPlan is a private, local-first university attendance intelligence application designed to help students track and plan their attendance under an institutional 75% requirement. Student credentials and attendance records never leave your local machine.
         </p>
         <div className="flex flex-wrap items-center justify-between pt-2 border-t border-slate-800 text-[11px] text-slate-500">
-          <span>Version: 0.1.0-beta.5 (Supervised Friends Beta)</span>
+          <span>Version: 0.1.0-beta.6 (Supervised Friends Beta)</span>
           <span>Security: DPAPI Credential Vault &bull; IPv4 Loopback Binding</span>
         </div>
       </section>

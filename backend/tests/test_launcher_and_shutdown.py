@@ -24,7 +24,7 @@ def test_university_source_origin_regression():
 
 
 def test_shutdown_endpoint_security_and_trigger():
-    """Test /api/v1/startup/shutdown requires loopback caller, rejects cross-site, and triggers app.state hook."""
+    """Test /api/v1/startup/shutdown requires loopback caller, rejects cross-site, validates instance token, and triggers app.state hook."""
     client = TestClient(app)
 
     # Cross-site request rejected
@@ -32,13 +32,47 @@ def test_shutdown_endpoint_security_and_trigger():
     assert res_cross.status_code == 403
     assert "cross-site" in res_cross.json()["detail"].lower()
 
-    # Trigger hook test
-    mock_trigger = Mock()
-    app.state.trigger_shutdown = mock_trigger
+    # Unauthorized port rejected
+    res_bad_port = client.post("/api/v1/startup/shutdown", headers={"origin": "http://localhost:9999"})
+    assert res_bad_port.status_code == 403
+    assert "port" in res_bad_port.json()["detail"].lower()
 
-    res_ok = client.post("/api/v1/startup/shutdown")
-    assert res_ok.status_code == 200
-    assert res_ok.json()["status"] == "shutting_down"
+    # Instance token enforcement test
+    app.state.instance_token = "secret-instance-token-12345"
+    try:
+        # Missing token header
+        res_no_token = client.post("/api/v1/startup/shutdown")
+        assert res_no_token.status_code == 403
+        assert "x-attendplan-instance" in res_no_token.json()["detail"].lower()
+
+        # Invalid token header
+        res_wrong_token = client.post("/api/v1/startup/shutdown", headers={"x-attendplan-instance": "wrong-token"})
+        assert res_wrong_token.status_code == 403
+
+        # Valid token header
+        mock_trigger = Mock()
+        app.state.trigger_shutdown = mock_trigger
+
+        res_ok = client.post(
+            "/api/v1/startup/shutdown",
+            headers={"x-attendplan-instance": "secret-instance-token-12345"},
+        )
+        assert res_ok.status_code == 200
+        assert res_ok.json()["status"] == "shutting_down"
+    finally:
+        app.state.instance_token = None
+
+
+def test_status_endpoint_returns_instance_token():
+    """Test /api/v1/startup/status includes instance_token from app.state."""
+    client = TestClient(app)
+    app.state.instance_token = "desktop-instance-token-abc"
+    try:
+        res = client.get("/api/v1/startup/status")
+        assert res.status_code == 200
+        assert res.json().get("instance_token") == "desktop-instance-token-abc"
+    finally:
+        app.state.instance_token = None
 
 
 def test_launch_unified_browser_semantics():

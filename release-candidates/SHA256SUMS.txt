@@ -3,3 +3,4 @@ fb21409f226415472e750d1b490ac2979e4f31d18227103b95fa31e777837311  AttendPlan-0.1
 12b9465d69ec4c72aca8888bde24362bc28cc9734a727d28ca2bd6415f1e63b5  AttendPlan-0.1.0-beta.3-Setup.exe
 160664cdb70f068f142c0611398b1f1bb579b38ee47dc2dc7d1bf7bd87df1486  AttendPlan-0.1.0-beta.4-Setup.exe
 ca31c1d34e8d902eaffbc0710e94bcdc6afe2baee77fe3611608cabe1e6d6aa8  AttendPlan-0.1.0-beta.5-Setup.exe
+c2d7a5274c72ff79f43a31b702e68eb0bcf96e7dc7417a6a4dd08191057d16cc  AttendPlan-0.1.0-beta.6-Setup.exe

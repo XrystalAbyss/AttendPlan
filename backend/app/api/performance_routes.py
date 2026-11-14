@@ -78,15 +78,15 @@ def performance_scopes(payload: PerformanceRequest, db: Session = Depends(get_db
 
 
 def approval_scope(payload: PerformanceRequest) -> dict[str, Any]:
-    if payload.view == "results":
+    if payload.view != "marks":
         raise HTTPException(
             400,
-            "Official semester results view has been retired by COE / University and is unavailable for live import.",
+            "Only continuous evaluation internal marks are supported. Official semester results view has been retired.",
         )
-    if payload.exam_type == "4":
+    if payload.exam_type is not None and payload.exam_type != "3":
         raise HTTPException(
             400,
-            "External examination scope (type 4) is rejected. Only continuous evaluation internal marks (type 3) are supported.",
+            "Only continuous evaluation internal marks (exam type 3) are supported.",
         )
     scope = {"term_key": payload.term_key, "view": payload.view}
     if payload.exam_session is not None or payload.exam_type is not None:
@@ -100,40 +100,38 @@ def approval_scope(payload: PerformanceRequest) -> dict[str, Any]:
 
 @router.post("/preview")
 def performance_preview(payload: PerformanceRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
-    if payload.view == "results":
+    if payload.view != "marks":
         raise HTTPException(
             400,
-            "Official semester results view has been retired by COE / University and is unavailable for live import.",
+            "Only continuous evaluation internal marks are supported. Official semester results view has been retired.",
         )
-    if payload.exam_type == "4":
+    if payload.exam_type != "3":
         raise HTTPException(
             400,
-            "External examination scope (type 4) is rejected. Only continuous evaluation internal marks (type 3) are supported.",
+            "Only continuous evaluation internal marks (exam type 3) are supported.",
         )
     term = verified_term(db, payload.term_key)
-    if payload.view == "marks":
-        if not payload.exam_session or not payload.exam_type:
-            raise HTTPException(400, "Discover and select an exam session and exam type before previewing marks.")
-        discoveries = db.scalars(select(SyncJob).where(SyncJob.source_scope == "PERFORMANCE_SCOPE_DISCOVERY").order_by(SyncJob.created_at.desc())).all()
-        discovery = next((j for j in discoveries if (j.details or {}).get("term_key") == payload.term_key), None)
-        scopes = (discovery.details or {}).get("scopes", []) if discovery else []
-        if not any(option["exam_session"] == payload.exam_session and option["exam_type"] == payload.exam_type and option.get("division_id") == payload.division_id for option in scopes):
-            raise HTTPException(409, "This exam scope was not discovered for the selected semester.")
+    if not payload.exam_session:
+        raise HTTPException(400, "Discover and select an exam session before previewing marks.")
+    discoveries = db.scalars(select(SyncJob).where(SyncJob.source_scope == "PERFORMANCE_SCOPE_DISCOVERY").order_by(SyncJob.created_at.desc())).all()
+    discovery = next((j for j in discoveries if (j.details or {}).get("term_key") == payload.term_key), None)
+    scopes = (discovery.details or {}).get("scopes", []) if discovery else []
+    if not any(option["exam_session"] == payload.exam_session and option["exam_type"] == payload.exam_type and option.get("division_id") == payload.division_id for option in scopes):
+        raise HTTPException(409, "This exam scope was not discovered for the selected semester.")
     source_course_count = None
-    if payload.view == "marks":
-        from app.adapters.performance_portal import extract_marks
-        if not _SYNC_LOCK.acquire(blocking=False):
-            raise HTTPException(409, "The portal is busy. Wait for discovery to finish before previewing marks.")
-        try:
-            source = extract_marks(term, payload.exam_session or "", payload.exam_type or "", payload.division_id)
-            source_course_count = len(source["courses"])
-        except Exception as err:
-            logging.getLogger(__name__).exception("Error during extract_marks in preview: %s", err)
-            raise HTTPException(409, f"Marks could not be validated for this exact scope: {err}. No marks were imported.") from None
-        finally:
-            _SYNC_LOCK.release()
+    from app.adapters.performance_portal import extract_marks
+    if not _SYNC_LOCK.acquire(blocking=False):
+        raise HTTPException(409, "The portal is busy. Wait for discovery to finish before previewing marks.")
+    try:
+        source = extract_marks(term, payload.exam_session, payload.exam_type, payload.division_id)
+        source_course_count = len(source.get("courses", []))
+    except Exception as err:
+        logging.getLogger(__name__).exception("Error during extract_marks in preview: %s", err)
+        raise HTTPException(409, f"Marks could not be validated for this exact scope: {err}. No marks were imported.") from None
+    finally:
+        _SYNC_LOCK.release()
     details = approval_scope(payload)
-    if payload.view == "marks" and source is not None:
+    if source is not None:
         details["captured_payload"] = source
         details["source_fingerprint"] = hashlib.sha256(json.dumps(source, sort_keys=True).encode()).hexdigest()
         details["captured_at"] = datetime.now(timezone.utc).isoformat()
@@ -145,7 +143,7 @@ def performance_preview(payload: PerformanceRequest, db: Session = Depends(get_d
     return {"approval_id": job.id, "term_key": term.term_key, "label": term.display_label,
             "class_label": term.class_display_label, "view": payload.view,
             "exam_session": payload.exam_session, "exam_type": payload.exam_type, "division_id": payload.division_id,
-            "source_course_count": source_course_count, "requires_user_approval": True, "scope": "One semester, one portal view, no other semesters or attendance changes."}
+            "source_course_count": source_course_count, "requires_user_approval": True, "scope": "One semester, continuous evaluation internal marks only."}
 
 
 def extract_performance(term: Any, view: str) -> dict[str, Any]:
@@ -199,51 +197,89 @@ def capture_performance(payload: PerformanceRequest, db: Session = Depends(get_d
             400,
             "Official semester results view has been retired by COE / University and is unavailable for live import.",
         )
-    if payload.exam_type == "4":
+    if payload.exam_type != "3":
         raise HTTPException(
             400,
-            "External examination scope (type 4) is rejected. Only continuous evaluation internal marks (type 3) are supported.",
+            "Only continuous evaluation internal marks (exam_type == '3') are supported for performance import.",
         )
     if not payload.approval_id:
         raise HTTPException(400, "approval_id is required to import approved performance preview.")
+    if not payload.exam_session:
+        raise HTTPException(400, "Exam session is required for marks import.")
+
     verified_term(db, payload.term_key)
     job = db.get(SyncJob, payload.approval_id)
-    expected_scope = approval_scope(payload)
-    job_details = (job.details or {}) if job else {}
-    if not job or job.source_scope != "PERFORMANCE_PILOT_PREVIEW" or not all(job_details.get(k) == v for k, v in expected_scope.items()):
+    if not job or job.source_scope != "PERFORMANCE_PILOT_PREVIEW":
         raise HTTPException(409, "Preview and approve this exact semester and view first.")
+
+    expected_scope = approval_scope(payload)
+    job_details = job.details or {}
+    if not all(job_details.get(k) == v for k, v in expected_scope.items()):
+        raise HTTPException(409, "Preview scope mismatch. Please re-preview this exact scope.")
+
+    if job.state != "COMPLETED":
+        raise HTTPException(409, "Preview has already been used or was not completed.")
+
+    created_at = job.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    if created_at < datetime.now(timezone.utc) - timedelta(minutes=30):
+        raise HTTPException(409, "Preview has expired. Please re-preview.")
+
+    if "captured_payload" not in job_details or not job_details["captured_payload"]:
+        raise HTTPException(409, "Preview captured payload is missing or invalid. Please re-preview.")
+
+    parsed = job_details["captured_payload"]
+    if not isinstance(parsed, dict) or not parsed.get("courses"):
+        raise HTTPException(409, "Preview captured payload has no valid courses. Please re-preview.")
+
+    stored_fingerprint = job_details.get("source_fingerprint") or job_details.get("preview_fingerprint")
+    if stored_fingerprint:
+        actual_fingerprint = hashlib.sha256(json.dumps(parsed, sort_keys=True).encode()).hexdigest()
+        if actual_fingerprint != stored_fingerprint:
+            raise HTTPException(409, "Preview payload fingerprint mismatch. Re-preview required.")
+
     if not _SYNC_LOCK.acquire(blocking=False):
         raise HTTPException(409, "Another portal job is active.")
+
+    storage_view = f"marks:{payload.exam_session}:{payload.exam_type}:{payload.division_id or ''}"
+
     try:
-        claimed = db.execute(update(SyncJob).where(
-            SyncJob.id == job.id, SyncJob.state == "COMPLETED",
-            SyncJob.created_at >= datetime.now(timezone.utc) - timedelta(minutes=30),
-        ).values(state="APPROVED").returning(SyncJob.id).execution_options(synchronize_session=False)).scalar_one_or_none()
+        claimed = db.execute(
+            update(SyncJob)
+            .where(
+                SyncJob.id == job.id,
+                SyncJob.state == "COMPLETED",
+                SyncJob.created_at >= datetime.now(timezone.utc) - timedelta(minutes=30),
+            )
+            .values(state="APPROVED")
+            .returning(SyncJob.id)
+            .execution_options(synchronize_session=False)
+        ).scalar_one_or_none()
+
         if claimed is None:
             raise HTTPException(409, "Preview expired or was already used.")
-        db.commit()
-        if not payload.exam_session or not payload.exam_type:
-            raise HTTPException(400, "Exam session and exam type are required for marks import.")
-        storage_view = f"marks:{payload.exam_session}:{payload.exam_type}:{payload.division_id or ''}"
-        if "captured_payload" not in job_details or not job_details["captured_payload"]:
-            raise HTTPException(409, "Preview captured payload is missing or invalid. Please re-preview.")
-        parsed = job_details["captured_payload"]
-        snap = persist_performance(db, payload.term_key, storage_view, parsed)
-        sanitized_details = dict(job.details or {})
+
+        snap = persist_performance(db, payload.term_key, storage_view, parsed, commit=False)
+
+        sanitized_details = dict(job_details)
         courses = parsed.get("courses", []) if isinstance(parsed, dict) else []
         sanitized_details["captured_payload"] = {
             "redacted": True,
             "course_count": len(courses),
-            "summary": "Source payload persisted in PerformanceSnapshot and scrubbed from sync job details."
+            "summary": "Source payload persisted in PerformanceSnapshot and scrubbed from sync job details.",
         }
         job.details = sanitized_details
+
         db.commit()
+        db.refresh(snap)
         return {"snapshot_id": snap.id, "term_key": snap.term_key, "view": snap.view, "provenance": snap.provenance}
     except HTTPException:
+        db.rollback()
         raise
     except Exception as error:
-        logging.getLogger(__name__).warning("Performance scope discovery stopped: %s", type(error).__name__)
+        logging.getLogger(__name__).warning("Performance import failed: %s", type(error).__name__)
         db.rollback()
-        raise HTTPException(409, "Performance route, filters, or result format could not be verified. No result snapshot was stored.") from None
+        raise HTTPException(409, "Performance import failed. No result snapshot was stored.") from None
     finally:
         _SYNC_LOCK.release()

@@ -16,7 +16,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
@@ -931,8 +931,10 @@ def close_portal_browser() -> PortalSessionStatusResponse:
 
 
 @router.post("/api/v1/portal/session/disconnect", tags=["Portal Discovery"])
-def disconnect_portal_session() -> dict[str, Any]:
+def disconnect_portal_session(request: Request) -> dict[str, Any]:
     """Disconnect and close dedicated browser process, freeing CDP resources."""
+    from app.api.startup_routes import verify_same_instance_authorization
+    verify_same_instance_authorization(request)
     _portal_session_manager.close_session()
     return {
         "status": "disconnected",
@@ -1666,12 +1668,14 @@ def get_login_status() -> LoginOrchestrationResponse:
 
 
 @router.post("/api/v1/auth/backup/export", tags=["Authentication"])
-def export_database_backup(db: Session = Depends(get_db)) -> dict[str, Any]:
+def export_database_backup(request: Request, db: Session = Depends(get_db)) -> dict[str, Any]:
     """Create a verified, timestamped backup of the user's SQLite database."""
     import datetime
     import sqlite3
+    from app.api.startup_routes import verify_same_instance_authorization
     from app.db.session import get_default_db_path
 
+    verify_same_instance_authorization(request)
     db_path = get_default_db_path()
     if not db_path.exists():
         raise HTTPException(status_code=404, detail="Database file does not exist.")

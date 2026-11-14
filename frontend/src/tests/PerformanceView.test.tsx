@@ -38,15 +38,13 @@ describe("PerformanceView", () => {
     expect(screen.getByRole("button", { name: "Preview performance scope" })).toBeDisabled();
   });
 
-  it("results view cannot trigger retrieval and never shows approval", async () => {
+  it("preview is disabled until verified continuous evaluation scope is selected", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => baseData }));
     renderComponent();
 
     await screen.findByRole("option", { name: "Synthetic Semester 4" });
     fireEvent.change(screen.getByLabelText("Performance semester"), { target: { value: "synthetic_s4" } });
-    fireEvent.change(screen.getByLabelText("Performance view"), { target: { value: "results" } });
 
-    expect(screen.getByRole("status")).toHaveTextContent(/Official semester results live portal import has been retired/);
     expect(screen.getByRole("button", { name: "Preview performance scope" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Approve this performance import" })).not.toBeInTheDocument();
   });

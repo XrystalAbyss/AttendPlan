@@ -56,8 +56,8 @@ def validate_scope(page: Any, term: Any, session: str, exam_type: str | None = N
         raise PortalSafetyError("PERFORMANCE_DIVISION_REQUIRES_EXPLICIT_SCOPE")
     if division_id is not None and selected(page, "division")[0] != division_id:
         raise PortalSafetyError("PERFORMANCE_DIVISION_MISMATCH")
-    if exam_type == "4":
-        raise PortalSafetyError("EXTERNAL_EXAM_SCOPE_REJECTED")
+    if exam_type is not None and exam_type != "3":
+        raise PortalSafetyError("UNSUPPORTED_EXAM_TYPE")
     if exam_type is not None and selected(page, "exam_type")[0] != exam_type:
         raise PortalSafetyError("PERFORMANCE_EXAM_TYPE_MISMATCH")
 
@@ -84,7 +84,7 @@ def discover_scopes(term: Any) -> list[dict[str, str]]:
                     except PortalSafetyError:
                         continue
                     for exam in options(page, "exam_type"):
-                        if exam.get("value") == "4" or "external" in exam.get("label", "").lower():
+                        if exam.get("value") != "3":
                             continue
                         result.append({"exam_session": session["value"], "exam_session_label": session["label"],
                                        "exam_type": exam["value"], "exam_type_label": exam["label"], "division_id": selected(page, "division")[0]})
@@ -103,8 +103,8 @@ def discover_scopes(term: Any) -> list[dict[str, str]]:
 
 
 def extract_marks(term: Any, session: str, exam_type: str, division_id: str | None = None) -> dict[str, Any]:
-    if exam_type == "4":
-        raise PortalSafetyError("EXTERNAL_EXAM_SCOPE_REJECTED")
+    if exam_type != "3":
+        raise PortalSafetyError("UNSUPPORTED_EXAM_TYPE")
     with sync_playwright() as p:
         browser, page = LivePortalExtractor()._get_portal_page(p)
         try:

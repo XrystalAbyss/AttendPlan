@@ -25,13 +25,14 @@ from app.api.startup_routes import coordinator, router as startup_router
 from app.db.session import init_db
 
 ALLOWED_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "testserver"}
+ALLOWED_LOCAL_PORTS = {5173, 4173, 3000, *range(8000, 8011)}
 
 
 class LocalOriginSecurityMiddleware(BaseHTTPMiddleware):
     """Guards AttendPlan local API against cross-origin drive-by attacks and CSRF.
 
     Verifies that requests to /api/ originating from web browsers come strictly from
-    loopback addresses (127.0.0.1 / localhost) and not from unauthorized third-party websites.
+    loopback addresses (127.0.0.1 / localhost) and authorized local ports.
     """
 
     async def dispatch(self, request, call_next):
@@ -48,6 +49,11 @@ class LocalOriginSecurityMiddleware(BaseHTTPMiddleware):
                     content={"detail": "Cross-origin request blocked: cross-site access prohibited."},
                 )
 
+            bound_port = getattr(request.app.state, "bound_port", None)
+            allowed_ports = set(ALLOWED_LOCAL_PORTS)
+            if bound_port is not None:
+                allowed_ports.add(bound_port)
+
             # Check Origin header if present
             if origin:
                 parts = urlsplit(origin)
@@ -55,6 +61,11 @@ class LocalOriginSecurityMiddleware(BaseHTTPMiddleware):
                     return JSONResponse(
                         status_code=403,
                         content={"detail": "Cross-origin request blocked: origin not permitted."},
+                    )
+                if parts.port is not None and parts.port not in allowed_ports:
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": f"Cross-origin request blocked: origin port {parts.port} not permitted."},
                     )
 
             # Check Referer header if present
@@ -64,6 +75,11 @@ class LocalOriginSecurityMiddleware(BaseHTTPMiddleware):
                     return JSONResponse(
                         status_code=403,
                         content={"detail": "Cross-origin request blocked: referer not permitted."},
+                    )
+                if parts.port is not None and parts.port not in allowed_ports:
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": f"Cross-origin request blocked: referer port {parts.port} not permitted."},
                     )
 
         return await call_next(request)

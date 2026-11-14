@@ -264,7 +264,13 @@ def parse_performance(html: str) -> dict[str, Any]:
     return {"courses": sorted(courses, key=lambda c: c["course_code"]), **summary}
 
 
-def persist_performance(db: Session, term_key: str, view: str, parsed: dict[str, Any]) -> PerformanceSnapshot:
+def persist_performance(
+    db: Session,
+    term_key: str,
+    view: str,
+    parsed: dict[str, Any],
+    commit: bool = True,
+) -> PerformanceSnapshot:
     checksum = hashlib.sha256(json.dumps(parsed, sort_keys=True).encode()).hexdigest()
     existing = db.scalars(select(PerformanceSnapshot).where(
         PerformanceSnapshot.term_key == term_key, PerformanceSnapshot.view == view,
@@ -274,8 +280,11 @@ def persist_performance(db: Session, term_key: str, view: str, parsed: dict[str,
         return existing
     snapshot = PerformanceSnapshot(term_key=term_key, view=view, checksum=checksum, payload=parsed)
     db.add(snapshot)
-    db.commit()
-    db.refresh(snapshot)
+    if commit:
+        db.commit()
+        db.refresh(snapshot)
+    else:
+        db.flush()
     return snapshot
 
 

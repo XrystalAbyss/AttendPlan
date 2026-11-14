@@ -10,6 +10,7 @@ import argparse
 import logging
 from logging.handlers import RotatingFileHandler
 import os
+import secrets
 import socket
 import sys
 import threading
@@ -24,7 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-APP_VERSION = "0.1.0-beta.5"
+APP_VERSION = "0.1.0-beta.6"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 
@@ -320,6 +321,10 @@ def run_launcher() -> int:
         SHUTDOWN_EVENT.set()
         server.should_exit = True
 
+    instance_token = secrets.token_hex(16)
+    app.state.instance_token = instance_token
+    app.state.bound_port = target_port
+    app.state.bound_host = args.host
     app.state.trigger_shutdown = trigger_shutdown
     app.state.shutdown_event = SHUTDOWN_EVENT
 
@@ -365,6 +370,12 @@ def run_launcher() -> int:
         logger.info("Stopping AttendPlan server...")
         server.should_exit = True
         server_thread.join(timeout=3.0)
+        try:
+            from app.db.session import default_engine
+            default_engine.dispose()
+            logger.info("Database engine connections closed.")
+        except Exception as exc:
+            logger.warning("Error closing database engine: %s", exc)
         logger.info("AttendPlan stopped cleanly.")
 
     return 0

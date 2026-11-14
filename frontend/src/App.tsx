@@ -43,7 +43,12 @@ const AttendanceDashboard: React.FC = () => {
   const handleExitApp = async () => {
     if (window.confirm("Exit AttendPlan? This will stop the local background server process.")) {
       try {
-        await fetch(`${API_BASE}/api/v1/startup/shutdown`, { method: "POST" });
+        const instanceToken = startupStatusQuery.data?.instance_token;
+        const headers: Record<string, string> = {};
+        if (instanceToken) {
+          headers["X-AttendPlan-Instance"] = instanceToken;
+        }
+        await fetch(`${API_BASE}/api/v1/startup/shutdown`, { method: "POST", headers });
         alert("AttendPlan server has stopped. You can safely close this browser tab.");
       } catch {
         alert("AttendPlan server shutdown initiated.");
