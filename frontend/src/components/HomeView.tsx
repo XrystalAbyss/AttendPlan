@@ -29,6 +29,7 @@ interface Props {
   lastSyncTime?: string | null;
   connectionState?: string;
   onOpenCourseSimulation?: (course: CourseRecord) => void;
+  onOpenAuthModal?: () => void;
 }
 
 export const HomeView: React.FC<Props> = ({
@@ -43,10 +44,14 @@ export const HomeView: React.FC<Props> = ({
   lastSyncTime,
   connectionState,
   onOpenCourseSimulation,
+  onOpenAuthModal,
 }) => {
   const currentTerm = terms.find((t) => t.id === currentTermId) ?? terms[0];
   const courses = termAttendance?.courses ?? [];
   const summary = termAttendance?.summary;
+
+  const [browserLaunchError, setBrowserLaunchError] = React.useState<string | null>(null);
+  const [isLaunchingBrowser, setIsLaunchingBrowser] = React.useState<boolean>(false);
 
   // Compute overall standing & margins
   const overallPercentage = summary?.overall_percentage ?? null;
@@ -100,15 +105,52 @@ export const HomeView: React.FC<Props> = ({
   };
 
   const handleLaunchBrowser = async () => {
+    setIsLaunchingBrowser(true);
+    setBrowserLaunchError(null);
     try {
-      await fetch(`${API_BASE}/api/v1/portal/session/launch`, { method: "POST" });
-    } catch {
-      // Ignore network errors in offline test mode
+      const res = await fetch(`${API_BASE}/api/v1/portal/session/launch`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || data.state === "ERROR") {
+        setBrowserLaunchError(data.details || "Could not launch dedicated Chrome browser. Ensure Google Chrome or Microsoft Edge is installed.");
+      }
+    } catch (err: any) {
+      setBrowserLaunchError(err.message || "Could not launch browser session.");
+    } finally {
+      setIsLaunchingBrowser(false);
     }
+  };
+
+  const getConnectionStatusLabel = () => {
+    if (isRefreshing) return "Refreshing current semester attendance...";
+    if (connectionState === "ACTION_REQUIRED") return "Portal sign-in required in browser";
+    if (connectionState === "CHECKING_PORTAL_SESSION") return "Checking university portal session...";
+    if (connectionState === "AUTHENTICATED") return "University session active";
+    if (connectionState === "DISCONNECTED") return "Portal disconnected";
+    if (lastSyncTime || termAttendance?.captured_at) return "Saved records available locally";
+    return "Ready to synchronize";
   };
 
   return (
     <div className="home-view space-y-6">
+      {/* Browser Error Banner */}
+      {browserLaunchError && (
+        <div className="p-4 bg-rose-950/60 border border-rose-800 rounded-xl text-xs text-rose-200 flex items-start justify-between gap-3 shadow-sm">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-rose-100 m-0">Browser Launch Notice</p>
+              <p className="m-0 mt-0.5 text-rose-300 leading-relaxed">{browserLaunchError}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setBrowserLaunchError(null)}
+            className="text-xs text-rose-400 hover:text-rose-200 font-bold px-2 py-0.5 cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* 1. Quick Refresh & Sync Status Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-900/90 border border-slate-800 rounded-xl shadow-sm">
         <div className="flex items-center gap-3">
@@ -118,44 +160,61 @@ export const HomeView: React.FC<Props> = ({
                 ? "bg-amber-400 animate-ping"
                 : connectionState === "ACTION_REQUIRED"
                 ? "bg-amber-400"
-                : "bg-emerald-400"
+                : connectionState === "AUTHENTICATED"
+                ? "bg-emerald-400"
+                : "bg-slate-500"
             }`}
           />
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-slate-200">
-                {isRefreshing
-                  ? "Refreshing attendance..."
-                  : connectionState === "ACTION_REQUIRED"
-                  ? "Portal sign-in required"
-                  : "Attendance up to date"}
+                {getConnectionStatusLabel()}
               </span>
               <span className="text-slate-500 text-xs">&bull;</span>
               <span className="text-xs text-slate-400">
-                Last updated {formatLastSync(lastSyncTime ?? termAttendance?.captured_at)}
+                {lastSyncTime || termAttendance?.captured_at
+                  ? `Last updated ${formatLastSync(lastSyncTime ?? termAttendance?.captured_at)}`
+                  : "Not yet synchronized"}
               </span>
             </div>
             {refreshError && <p className="text-xs text-rose-400 mt-0.5">{refreshError}</p>}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {connectionState === "ACTION_REQUIRED" ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Prominent Open Portal Action */}
+          <button
+            onClick={handleLaunchBrowser}
+            disabled={isLaunchingBrowser}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+              connectionState === "ACTION_REQUIRED"
+                ? "bg-amber-600/30 hover:bg-amber-600/50 border border-amber-500/50 text-amber-200"
+                : "bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200"
+            }`}
+            title="Open dedicated university student portal window"
+          >
+            <ExternalLink className="w-3.5 h-3.5 text-indigo-400" />
+            {isLaunchingBrowser ? "Opening..." : connectionState === "AUTHENTICATED" ? "Connected — Open Portal" : "Open University Portal"}
+          </button>
+
+          {/* Refresh Action */}
+          <button
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+            {isRefreshing ? "Syncing..." : "Refresh Attendance"}
+          </button>
+
+          {onOpenAuthModal && (
             <button
-              onClick={handleLaunchBrowser}
-              className="px-3.5 py-1.5 bg-amber-600/30 hover:bg-amber-600/50 border border-amber-500/50 text-amber-200 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+              onClick={onOpenAuthModal}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+              title="Configure registered mobile and automated TOTP login"
             >
-              <UserCheck className="w-3.5 h-3.5" />
-              Sign in to Portal
-            </button>
-          ) : (
-            <button
-              onClick={onRefresh}
-              disabled={isRefreshing}
-              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
-              {isRefreshing ? "Syncing..." : "Refresh Attendance"}
+              <KeyRound className="w-3.5 h-3.5 text-slate-400" />
+              Login Setup
             </button>
           )}
         </div>

@@ -5,18 +5,19 @@ Runs strictly as a local-first service bound to 127.0.0.1.
 
 from __future__ import annotations
 
+import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from app.api.archive_routes import recover_interrupted, router as archive_router
 from app.api.performance_routes import router as performance_router
@@ -24,14 +25,42 @@ from app.api.routes import router
 from app.api.startup_routes import coordinator, router as startup_router
 from app.db.session import init_db
 
-ALLOWED_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "testserver"}
+def get_allowed_origins(app_state: Any = None) -> set[str]:
+    """Calculate the strictly allowed origins for AttendPlan local API.
+
+    In production mode:
+      Only the dynamically bound loopback origin (e.g. http://127.0.0.1:<bound_port>,
+      http://localhost:<bound_port>, and testserver for test suites) is permitted.
+      Arbitrary or unrelated localhost ports (e.g. 8001 when server runs on 8000) are blocked.
+
+    In development mode (ATTENDPLAN_ENV=development):
+      Vite development server origins (ports 5173, 4173, 3000) are also permitted.
+    """
+    env = os.environ.get("ATTENDPLAN_ENV", "").lower()
+    allowed = {"http://testserver", "https://testserver"}
+
+    bound_port = getattr(app_state, "bound_port", None) if app_state else None
+    if bound_port is not None:
+        allowed.add(f"http://127.0.0.1:{bound_port}")
+        allowed.add(f"http://localhost:{bound_port}")
+    else:
+        # Default fallback if bound_port is not yet set on app.state
+        allowed.add("http://127.0.0.1:8000")
+        allowed.add("http://localhost:8000")
+
+    if env == "development":
+        for p in (5173, 4173, 3000):
+            allowed.add(f"http://localhost:{p}")
+            allowed.add(f"http://127.0.0.1:{p}")
+
+    return allowed
 
 
 class LocalOriginSecurityMiddleware(BaseHTTPMiddleware):
     """Guards AttendPlan local API against cross-origin drive-by attacks and CSRF.
 
-    Verifies that requests to /api/ originating from web browsers come strictly from
-    loopback addresses (127.0.0.1 / localhost) and not from unauthorized third-party websites.
+    Enforces that browser requests to /api/ originate strictly from authorized
+    origins. Dynamically attaches CORS headers ONLY to explicitly authorized origins.
     """
 
     async def dispatch(self, request, call_next):
@@ -48,10 +77,13 @@ class LocalOriginSecurityMiddleware(BaseHTTPMiddleware):
                     content={"detail": "Cross-origin request blocked: cross-site access prohibited."},
                 )
 
+            app_state = getattr(request, "app", None).state if hasattr(request, "app") else None
+            allowed_origins = get_allowed_origins(app_state)
+
             # Check Origin header if present
             if origin:
-                parts = urlsplit(origin)
-                if parts.hostname not in ALLOWED_LOOPBACK_HOSTS:
+                clean_origin = origin.rstrip("/")
+                if clean_origin not in allowed_origins:
                     return JSONResponse(
                         status_code=403,
                         content={"detail": "Cross-origin request blocked: origin not permitted."},
@@ -60,11 +92,43 @@ class LocalOriginSecurityMiddleware(BaseHTTPMiddleware):
             # Check Referer header if present
             if referer:
                 parts = urlsplit(referer)
-                if parts.hostname not in ALLOWED_LOOPBACK_HOSTS:
+                referer_origin = f"{parts.scheme}://{parts.netloc}".rstrip("/")
+                if referer_origin not in allowed_origins:
                     return JSONResponse(
                         status_code=403,
                         content={"detail": "Cross-origin request blocked: referer not permitted."},
                     )
+
+            # Handle CORS preflight OPTIONS request
+            if request.method == "OPTIONS":
+                if origin and origin.rstrip("/") in allowed_origins:
+                    return Response(
+                        status_code=200,
+                        headers={
+                            "Access-Control-Allow-Origin": origin,
+                            "Access-Control-Allow-Credentials": "true",
+                            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+                            "Access-Control-Allow-Headers": request.headers.get(
+                                "access-control-request-headers", "*"
+                            ),
+                            "Vary": "Origin",
+                        },
+                    )
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Cross-origin preflight blocked: origin not permitted."},
+                )
+
+            # Process request
+            response = await call_next(request)
+
+            # Add CORS headers strictly for authorized origin
+            if origin and origin.rstrip("/") in allowed_origins:
+                response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Access-Control-Allow-Credentials"] = "true"
+                response.headers["Vary"] = "Origin"
+
+            return response
 
         return await call_next(request)
 
@@ -86,28 +150,6 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
-)
-
-# Allow local frontend development servers and self-hosted loopback ports (8000-8010)
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:4173",
-    "http://127.0.0.1:4173",
-] + [
-    f"http://localhost:{p}" for p in range(8000, 8011)
-] + [
-    f"http://127.0.0.1:{p}" for p in range(8000, 8011)
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 # Enforce host header restriction against DNS rebinding attacks

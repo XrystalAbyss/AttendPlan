@@ -233,7 +233,27 @@ class PortalSessionManager:
             )
 
         if self.is_cdp_reachable():
-            # Already running
+            # Already running - check if portal tab exists or open one
+            tabs = self.get_open_tabs()
+            portal_tab = next(
+                (t for t in tabs if "icloudems" in t.get("url", "").lower() or "mrei" in t.get("url", "").lower()),
+                None,
+            )
+            if portal_tab and "id" in portal_tab:
+                try:
+                    act_req = urllib.request.Request(f"{self.cdp_url}/json/activate/{portal_tab['id']}", method="GET")
+                    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                    opener.open(act_req, timeout=1.5)
+                except Exception:
+                    pass
+            elif portal_url:
+                try:
+                    new_url = f"{self.cdp_url}/json/new?{urllib.parse.quote(portal_url, safe=':/?&=%')}"
+                    new_req = urllib.request.Request(new_url, method="PUT")
+                    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                    opener.open(new_req, timeout=2.0)
+                except Exception:
+                    pass
             return self.check_session_status()
 
         cmd = [
@@ -274,6 +294,31 @@ class PortalSessionManager:
                 profile_dir=str(self.profile_dir),
                 details=f"Failed to launch Chrome process: {str(e)}",
             )
+
+    def open_or_focus_tab(self, target_url: str) -> bool:
+        """Open or focus a tab with target_url via CDP endpoint."""
+        if not self.is_cdp_reachable():
+            return False
+        try:
+            tabs = self.get_open_tabs()
+            target_parsed = urllib.parse.urlsplit(target_url)
+            existing = next(
+                (t for t in tabs if urllib.parse.urlsplit(t.get("url", "")).hostname == target_parsed.hostname
+                 and urllib.parse.urlsplit(t.get("url", "")).path == target_parsed.path),
+                None
+            )
+            if existing and "id" in existing:
+                act_req = urllib.request.Request(f"{self.cdp_url}/json/activate/{existing['id']}", method="GET")
+                opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                opener.open(act_req, timeout=1.5)
+                return True
+            new_url = f"{self.cdp_url}/json/new?{urllib.parse.quote(target_url, safe=':/?&=%')}"
+            new_req = urllib.request.Request(new_url, method="PUT")
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            opener.open(new_req, timeout=2.0)
+            return True
+        except Exception:
+            return False
 
     def check_session_status(self) -> PortalSessionInfo:
         """Inspect current browser state over CDP without touching credentials or cookies."""

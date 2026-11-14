@@ -31,10 +31,7 @@ import type {
 
 
 
-export const API_BASE =
-  typeof window !== "undefined" && window.location.port === "5173"
-    ? "http://127.0.0.1:8000"
-    : "";
+export const API_BASE = "";
 
 export async function fetchHealth(): Promise<{ status: string; app: string; version: string }> {
   const res = await fetch(`${API_BASE}/health`);

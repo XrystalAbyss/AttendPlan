@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, Calendar } from "lucide-react";
+import { BookOpen, Calendar, History } from "lucide-react";
 import { AttendanceTable } from "./AttendanceTable";
 import { SummaryCards } from "./SummaryCards";
 import { SemesterSelector } from "./SemesterSelector";
 import { AttendanceExplorer } from "./AttendanceExplorer";
 import { AbsenceAnalyticsView } from "./AbsenceAnalyticsView";
+import { HistoricalAttendanceView } from "./HistoricalAttendanceView";
 import { standing } from "../standing";
 import type { AcademicTerm, CourseRecord, TermAttendanceResponse } from "../types/attendance";
 import { fetchMonthlyAnalytics, fetchSubjectAnalytics, fetchWeekdayAnalytics } from "../api/attendance";
@@ -30,7 +31,7 @@ export const AttendanceView: React.FC<Props> = ({
   onOpenCourseDetail,
   onOpenSimulation,
 }) => {
-  const [subView, setSubView] = useState<"roster" | "calendar">("roster");
+  const [subView, setSubView] = useState<"roster" | "calendar" | "historical">("roster");
 
   // Fetch date-wise and analytics data if calendar sub-view is selected
   const monthlyQuery = useQuery({
@@ -57,8 +58,9 @@ export const AttendanceView: React.FC<Props> = ({
   return (
     <div className="attendance-view space-y-5">
       {/* Semester Selector Bar & Sub-view Switch */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-slate-900/90 border border-slate-800 rounded-xl">
-        <div className="flex-1 max-w-md">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 bg-slate-900/90 border border-slate-800 rounded-xl shadow-sm">
+        {/* Semester selector & metadata */}
+        <div className="flex-1 min-w-0">
           {terms.length > 0 && (
             <SemesterSelector
               terms={terms}
@@ -69,34 +71,45 @@ export const AttendanceView: React.FC<Props> = ({
         </div>
 
         {/* Sub-view toggle pills */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-800/80 border border-slate-700/80 rounded-lg">
+        <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-800/80 border border-slate-700/80 rounded-lg flex-shrink-0">
           <button
             onClick={() => setSubView("roster")}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
               subView === "roster"
                 ? "bg-indigo-600 text-white shadow-sm"
                 : "text-slate-400 hover:text-slate-200"
             }`}
           >
             <BookOpen className="w-3.5 h-3.5" />
-            Subject Roster &amp; Planner
+            Subject Roster
           </button>
           <button
             onClick={() => setSubView("calendar")}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
               subView === "calendar"
                 ? "bg-indigo-600 text-white shadow-sm"
                 : "text-slate-400 hover:text-slate-200"
             }`}
           >
             <Calendar className="w-3.5 h-3.5" />
-            Date-wise Calendar &amp; Trends
+            Calendar &amp; Trends
+          </button>
+          <button
+            onClick={() => setSubView("historical")}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+              subView === "historical"
+                ? "bg-indigo-600 text-white shadow-sm"
+                : "text-slate-300 hover:text-white"
+            }`}
+          >
+            <History className="w-3.5 h-3.5 text-indigo-400" />
+            Import Previous Semesters
           </button>
         </div>
       </div>
 
       {/* Primary Content Area */}
-      {subView === "roster" ? (
+      {subView === "roster" && (
         <div className="space-y-6">
           {termAttendance?.summary && (
             <SummaryCards
@@ -113,7 +126,9 @@ export const AttendanceView: React.FC<Props> = ({
             onSelectCourseForSimulation={onOpenSimulation}
           />
         </div>
-      ) : (
+      )}
+
+      {subView === "calendar" && (
         <div className="space-y-6">
           {/* Day-wise Calendar View */}
           <AttendanceExplorer
@@ -132,7 +147,12 @@ export const AttendanceView: React.FC<Props> = ({
           />
         </div>
       )}
+
+      {subView === "historical" && (
+        <div className="space-y-6">
+          <HistoricalAttendanceView targetPercentage={targetPercentage} />
+        </div>
+      )}
     </div>
   );
 };
-

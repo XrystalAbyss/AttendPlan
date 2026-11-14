@@ -1,6 +1,6 @@
 import React from "react";
 import {ThemeSwitch} from "./ThemeSwitch";
-import { GraduationCap, Sliders, ShieldCheck, KeyRound } from "lucide-react";
+import { GraduationCap, Sliders, ShieldCheck, KeyRound, Power } from "lucide-react";
 
 interface Props {
   academicYear: string;
@@ -10,6 +10,7 @@ interface Props {
   onTargetChange: (target: number) => void;
   isBackendHealthy: boolean;
   onOpenAuthModal?: () => void;
+  onExit?: () => void;
 }
 
 
@@ -21,6 +22,7 @@ export const Header: React.FC<Props> = ({
   onTargetChange,
   isBackendHealthy,
   onOpenAuthModal,
+  onExit,
 }) => {
 
   return (
@@ -103,6 +105,18 @@ export const Header: React.FC<Props> = ({
             />
             <span>{isBackendHealthy ? "Connected" : "Offline"}</span>
           </div>
+
+          {/* Exit AttendPlan */}
+          {onExit && (
+            <button
+              onClick={onExit}
+              className="flex items-center gap-1.5 text-xs text-rose-300 hover:text-white bg-rose-950/40 hover:bg-rose-900/50 border border-rose-800/50 px-2.5 py-1 rounded-md transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+              title="Stop AttendPlan Local Server"
+            >
+              <Power className="w-3.5 h-3.5 text-rose-400" />
+              <span>Exit</span>
+            </button>
+          )}
         </div>
       </div>
     </header>

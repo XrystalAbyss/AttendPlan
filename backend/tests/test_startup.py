@@ -115,3 +115,13 @@ def test_refresh_current_endpoint_forces_execution(tmp_path, monkeypatch):
     assert response.status_code == 200
     assert response.json()["state"] == "SYNC_COMPLETE"
     current_refresh.assert_called_once()
+
+
+def test_shutdown_endpoint_signals_clean_exit():
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post("/api/v1/startup/shutdown")
+    assert response.status_code == 200
+    assert response.json()["status"] == "shutting_down"

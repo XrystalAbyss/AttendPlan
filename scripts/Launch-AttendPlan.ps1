@@ -4,7 +4,8 @@
 
 [CmdletBinding()]
 param(
-    [switch]$Stop = $false
+    [switch]$Stop = $false,
+    [switch]$ForceSwitch = $false
 )
 
 Set-StrictMode -Version Latest
@@ -107,6 +108,9 @@ Log-Ok "University portal ready"
 # -------------------------------------------------------------
 Log-Step "3/5" "Starting backend..."
 
+# Set development environment for dev launcher
+$env:ATTENDPLAN_ENV = "development"
+
 $backendUrl = "http://127.0.0.1:8000"
 $healthUrl = "$backendUrl/health"
 $backendAlreadyRunning = $false
@@ -114,8 +118,102 @@ $backendAlreadyRunning = $false
 try {
     $healthResp = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 2 -ErrorAction Stop
     if ($healthResp -and $healthResp.app -eq "AttendPlan" -and $healthResp.status -eq "healthy") {
-        $backendAlreadyRunning = $true
-        Log-Ok "$backendUrl (reused existing healthy instance)"
+        $existingRuntime = if ($healthResp.runtime) { $healthResp.runtime } else { "unknown" }
+        $existingMode = if ($healthResp.mode) { $healthResp.mode } else { "production" }
+
+        # Identify process listening on port 8000
+        $portConn = Get-NetTCPConnection -LocalPort 8000 -LocalAddress "127.0.0.1" -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+        $owningPid = if ($portConn) { $portConn.OwningProcess } else { $null }
+        $procInfo = if ($owningPid) { Get-Process -Id $owningPid -ErrorAction SilentlyContinue } else { $null }
+        $procPath = if ($procInfo -and $procInfo.Path) { $procInfo.Path } else { "Unknown" }
+        $procName = if ($procInfo) { $procInfo.ProcessName } else { "Unknown" }
+
+        if ($existingRuntime -eq "source" -and $existingMode -eq "development") {
+            $backendAlreadyRunning = $true
+            Log-Ok "$backendUrl (reused existing source development instance, PID: $owningPid)"
+        } else {
+            # Query detailed diagnostic status
+            $statusResp = $null
+            try {
+                $statusResp = Invoke-RestMethod -Uri "$backendUrl/api/v1/startup/status" -TimeoutSec 2 -ErrorAction Stop
+            } catch {
+                # Status endpoint might not be accessible or timed out
+            }
+
+            $instanceToken = if ($statusResp -and $statusResp.instance_token) { $statusResp.instance_token } else { $null }
+            $existingDb = if ($statusResp -and $statusResp.database_path) { $statusResp.database_path } else { "Default (%LOCALAPPDATA%\AttendPlan\attendplan.sqlite3)" }
+            $isSyncing = if ($statusResp -and ($statusResp.active_sync -or $statusResp.running -or $statusResp.state -in @("SYNCING", "DISCOVERING", "LOGGING_IN"))) { $true } else { $false }
+
+            # Safety check: Never terminate an active synchronization job or database write
+            if ($isSyncing) {
+                Log-Error "The running AttendPlan instance (PID: $owningPid) is currently executing an active synchronization job."
+                Write-Host "             Never interrupt active portal synchronization or database writes." -ForegroundColor Red
+                Write-Host "             Please wait for the current synchronization to complete before switching runtimes." -ForegroundColor Yellow
+                exit 1
+            }
+
+            # Clear conflict explanation
+            Write-Host "`n[RUNTIME CONFLICT] Port 8000 is occupied by a running AttendPlan instance:" -ForegroundColor Yellow
+            Write-Host "  - Process Name    : $procName (PID: $owningPid)" -ForegroundColor Gray
+            Write-Host "  - Executable Path : $procPath" -ForegroundColor Gray
+            Write-Host "  - Runtime & Mode  : $existingRuntime runtime ($existingMode mode)" -ForegroundColor Gray
+            Write-Host "  - Database Target : $existingDb" -ForegroundColor Gray
+            Write-Host "  - Active Sync Job : None (Idle, safe to switch)" -ForegroundColor Gray
+            Write-Host "  - Required Mode   : Source backend in development mode (ATTENDPLAN_ENV=development)`n" -ForegroundColor Cyan
+
+            # Explicit approval required to switch runtimes
+            $approved = $false
+            if ($ForceSwitch) {
+                Log-Info "-ForceSwitch parameter supplied. Proceeding with graceful runtime switch."
+                $approved = $true
+            } elseif ([Environment]::UserInteractive) {
+                $promptAnswer = Read-Host "Do you want to gracefully stop the running instance (PID: $owningPid) to switch to development mode? [y/N]"
+                if ($promptAnswer -match "^[yY]$") {
+                    $approved = $true
+                }
+            } else {
+                Log-Error "Running instance detected on port 8000 in non-interactive session without -ForceSwitch."
+                Write-Host "             Run with -ForceSwitch to approve stopping the running instance." -ForegroundColor Yellow
+                exit 1
+            }
+
+            if (-not $approved) {
+                Log-Info "Switch cancelled by user. The running instance (PID: $owningPid) was not modified or terminated."
+                exit 0
+            }
+
+            Write-Host "             Requesting graceful shutdown of the existing instance..." -ForegroundColor Cyan
+            $shutdownSuccess = $false
+            try {
+                $headers = @{}
+                if ($instanceToken) {
+                    $headers["X-AttendPlan-Instance"] = $instanceToken
+                }
+                $null = Invoke-RestMethod -Uri "$backendUrl/api/v1/startup/shutdown" -Method Post -Headers $headers -TimeoutSec 3 -ErrorAction Stop
+                
+                # Wait up to 10 seconds for process exit and port release
+                for ($k = 0; $k -lt 20; $k++) {
+                    Start-Sleep -Milliseconds 500
+                    $stillListening = Get-NetTCPConnection -LocalPort 8000 -LocalAddress "127.0.0.1" -State Listen -ErrorAction SilentlyContinue
+                    $stillProc = if ($owningPid) { Get-Process -Id $owningPid -ErrorAction SilentlyContinue } else { $null }
+                    if (-not $stillListening -and -not $stillProc) {
+                        $shutdownSuccess = $true
+                        break
+                    }
+                }
+            } catch {
+                Log-Info "Graceful shutdown via API encountered: $_"
+            }
+
+            if ($shutdownSuccess) {
+                Log-Ok "Gracefully stopped existing instance (PID: $owningPid). Port 8000 released."
+                $backendAlreadyRunning = $false
+            } else {
+                Log-Error "Could not safely verify exit of instance (PID: $owningPid). Port 8000 not released."
+                Write-Host "             Please close the running AttendPlan application before launching development mode." -ForegroundColor Yellow
+                exit 1
+            }
+        }
     }
 } catch {
     $backendAlreadyRunning = $false
@@ -132,7 +230,14 @@ if (-not $backendAlreadyRunning) {
 
     $backendDir = Join-Path $repoRoot "backend"
     try {
-        $bProc = Start-Process -FilePath $pythonExe -ArgumentList "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000" -WorkingDirectory $backendDir -PassThru -WindowStyle Hidden
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $pythonExe
+        $psi.Arguments = "-m uvicorn app.main:app --host 127.0.0.1 --port 8000"
+        $psi.WorkingDirectory = $backendDir
+        $psi.EnvironmentVariables["ATTENDPLAN_ENV"] = "development"
+        $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+        $psi.UseShellExecute = $false
+        $bProc = [System.Diagnostics.Process]::Start($psi)
         Set-Content -Path $backendPidFile -Value $bProc.Id -Force
     } catch {
         Log-Error "Failed to spawn backend process: $_"
