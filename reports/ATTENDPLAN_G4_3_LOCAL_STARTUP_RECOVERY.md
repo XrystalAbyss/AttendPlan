@@ -183,3 +183,17 @@ A consistent WAL-safe backup was taken before code changes:
 - `GET http://127.0.0.1:8000/api/v1/terms` with `Origin: http://127.0.0.1:5173`: returned HTTP 200 OK with all 5 terms and `Access-Control-Allow-Origin: http://127.0.0.1:5173`
 - Backend launched with `ATTENDPLAN_ENV` unset:
 - `GET http://127.0.0.1:8000/api/v1/terms` with `Origin: http://127.0.0.1:5173`: returned HTTP 403 Forbidden (production security preserved)
+
+---
+
+## 8. Pull Request & Continuous Integration Status
+
+- **Repository**: `https://github.com/XrystalAbyss/AttendPlan`
+- **Feature Branch**: `feature/g4-real-beta-recovery`
+- **Pull Request**: [#1](https://github.com/XrystalAbyss/AttendPlan/pull/1)
+- **Verified Head Commit SHA**: `03c424ba7ada96a988ea2fb6916501587dd30466`
+- **PR State**: `open` (Mergeable: `True`)
+- **GitHub Actions Check Runs**:
+  - `Backend Quality Gate`: **SUCCESS** (`conclusion=success`, pytest + ruff + mypy + sanitization)
+  - `Frontend Quality Gate`: **SUCCESS** (`conclusion=success`, vitest + tsc + vite build)
+
